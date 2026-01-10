@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaborative Whiteboard</title>
+
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Whiteboard CSS -->
+    <link rel="stylesheet" href="/static/css/whiteboard.css">
+
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+
+    <!-- Perfect Freehand - Load via ES module and expose globally -->
+    <script type="module">
+        import { getStroke } from 'https://esm.sh/perfect-freehand@1.2.2';
+        window.getStroke = getStroke;
+        window.dispatchEvent(new Event('perfect-freehand-ready'));
+    </script>
+</head>
+
+<body class="bg-gray-100 overflow-hidden">
+    <!-- Main Whiteboard Component -->
+    <div x-data="whiteboardApp()" x-init="init()" class="whiteboard-container" :data-mode="mode">
+
+        <!-- Dual Canvas System -->
+        <canvas x-ref="baseCanvas" class="whiteboard-canvas whiteboard-canvas--base"></canvas>
+        <canvas x-ref="activeCanvas" class="whiteboard-canvas whiteboard-canvas--active"></canvas>
+
+        <!-- Floating Tool Palette -->
+        <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50">
+            <div
+                class="flex items-center gap-2 px-4 py-3 bg-white/95 backdrop-blur rounded-2xl shadow-lg border border-gray-200">
+
+                <!-- Mode Buttons -->
+                <div class="flex items-center gap-1 pr-3 border-r border-gray-200">
+                    <button @click="setMode('draw')"
+                        :class="mode === 'draw' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2 rounded-lg transition-colors" title="Draw (D)">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                    </button>
+                    <button @click="setMode('select')"
+                        :class="mode === 'select' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2 rounded-lg transition-colors" title="Select (V)">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                        </svg>
+                    </button>
+                    <button @click="setMode('pan')"
+                        :class="mode === 'pan' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2 rounded-lg transition-colors" title="Pan (Space)">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Color Picker -->
+                <div class="flex items-center gap-2 px-2">
+                    <template x-for="c in colors" :key="c">
+                        <button @click="setColor(c)" :style="{ backgroundColor: c }"
+                            :class="color === c ? 'ring-2 ring-offset-2 ring-blue-500 scale-110' : ''"
+                            class="w-6 h-6 rounded-full border border-gray-300 transition-transform hover:scale-110">
+                        </button>
+                    </template>
+                    <input type="color" x-model="color" @input="setColor($event.target.value)"
+                        class="w-6 h-6 rounded cursor-pointer border-0 p-0">
+                </div>
+
+                <!-- Stroke Width -->
+                <div class="flex items-center gap-2 px-3 border-l border-gray-200">
+                    <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16" />
+                    </svg>
+                    <input type="range" min="1" max="20" x-model="strokeWidth"
+                        @input="setStrokeWidth($event.target.value)"
+                        class="w-20 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                    <span class="text-xs text-gray-500 w-4" x-text="strokeWidth"></span>
+                </div>
+
+                <!-- Zoom Controls -->
+                <div class="flex items-center gap-1 px-3 border-l border-gray-200">
+                    <button @click="zoomOut()" class="p-1.5 rounded hover:bg-gray-100 text-gray-600">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
+                        </svg>
+                    </button>
+                    <span class="text-xs text-gray-600 w-10 text-center" x-text="Math.round(zoom * 100) + '%'"></span>
+                    <button @click="zoomIn()" class="p-1.5 rounded hover:bg-gray-100 text-gray-600">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                        </svg>
+                    </button>
+                    <button @click="resetZoom()" class="p-1.5 rounded hover:bg-gray-100 text-gray-600 text-xs">
+                        Fit
+                    </button>
+                </div>
+
+                <!-- Clear Button -->
+                <div class="pl-3 border-l border-gray-200">
+                    <!-- Image Upload Button -->
+                    <input type="file" x-ref="imageInput" @change="uploadImage($event)" accept="image/*" class="hidden">
+                    <button @click="$refs.imageInput.click()" 
+                        class="p-2 rounded-lg hover:bg-green-50 text-green-600 transition-colors"
+                        title="Add Image (Ctrl+V to paste)">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                    </button>
+                    <button @click="clearCanvas()" class="p-2 rounded-lg hover:bg-red-50 text-red-500 transition-colors"
+                        title="Clear Canvas">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection Status -->
+        <div class="connection-status"
+            :class="connected ? 'connection-status--connected' : 'connection-status--disconnected'">
+            <div class="connection-status__dot"></div>
+            <span x-text="connected ? 'Connected' : 'Disconnected'"></span>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div x-show="loading" x-transition class="absolute inset-0 bg-white/80 flex items-center justify-center z-50">
+            <div class="text-center">
+                <div class="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto">
+                </div>
+                <p class="mt-4 text-gray-600">Loading whiteboard...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Whiteboard & Sync Scripts -->
+    <script src="/static/js/whiteboard.js"></script>
+    <script src="/static/js/sync.js"></script>
+
+    <script>
+        // Alpine.js Component
+        function whiteboardApp() {
+            return {
+                // State
+                whiteboard: null,
+                syncManager: null,
+                documentId: '{{ document_id }}',
+
+                // UI State
+                mode: 'draw',
+                color: '#000000',
+                strokeWidth: 4,
+                zoom: 1,
+                connected: false,
+                loading: true,
+
+                // Color palette
+                colors: ['#000000', '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6'],
+
+                async init() {
+                    // Wait for perfect-freehand to be loaded
+                    if (typeof getStroke !== 'function') {
+                        await new Promise(resolve => {
+                            window.addEventListener('perfect-freehand-ready', resolve, { once: true });
+                            // Fallback timeout in case event already fired
+                            setTimeout(resolve, 1000);
+                        });
+                    }
+                    // Guard against accidental double-initialization.
+                    // This can happen during dev (Flask debug reloader / hot reload) or if Alpine is started twice.
+                    if (this._initialized) return;
+                    this._initialized = true;
+
+                    // Initialize Whiteboard
+                    this.whiteboard = new Whiteboard(
+                        this.$refs.baseCanvas,
+                        this.$refs.activeCanvas,
+                        { color: this.color, strokeWidth: this.strokeWidth }
+                    );
+
+                    // Initialize SyncManager
+                    this.syncManager = new SyncManager(this.whiteboard, this.documentId);
+
+                    // Watch for zoom changes
+                    const updateZoom = () => {
+                        // If init ran twice somehow, the first loop will still be running.
+                        // Bail out so only the most recent init keeps a zoom watcher.
+                        if (!this._initialized) return;
+                        this.zoom = this.whiteboard.zoom;
+                        this._zoomRafId = requestAnimationFrame(updateZoom);
+                    };
+                    updateZoom();
+
+                    try {
+                        // Connect to socket
+                        await this.syncManager.connect();
+                        this.connected = true;
+
+                        // Load existing strokes
+                        await this.syncManager.loadDocument();
+                    } catch (error) {
+                        console.error('Failed to initialize:', error);
+                    }
+
+                    this.loading = false;
+
+                    // Keyboard shortcuts
+                    document.addEventListener('keydown', (e) => {
+                        if (e.target.tagName === 'INPUT') return;
+                        if (e.key === 'd' || e.key === 'D') this.setMode('draw');
+                        if (e.key === 'v' || e.key === 'V') this.setMode('select');
+                    });
+                },
+
+                setMode(mode) {
+                    this.mode = mode;
+                    this.whiteboard.setMode(mode);
+                },
+
+                setColor(color) {
+                    this.color = color;
+                    this.whiteboard.setColor(color);
+                },
+
+                setStrokeWidth(width) {
+                    this.strokeWidth = parseInt(width);
+                    this.whiteboard.setStrokeWidth(this.strokeWidth);
+                },
+
+                zoomIn() {
+                    this.whiteboard.zoomIn();
+                    this.zoom = this.whiteboard.zoom;
+                },
+
+                zoomOut() {
+                    this.whiteboard.zoomOut();
+                    this.zoom = this.whiteboard.zoom;
+                },
+
+                resetZoom() {
+                    this.whiteboard.resetZoom();
+                    this.zoom = this.whiteboard.zoom;
+                },
+
+                async clearCanvas() {
+                    if (confirm('Clear the entire canvas?')) {
+                        this.whiteboard.clear();
+                        await this.syncManager.clearDocument();
+                    }
+                },
+
+                uploadImage(event) {
+                    const file = event.target.files[0];
+                    if (file && file.type.startsWith('image/')) {
+                        this.whiteboard.addImageFromFile(file);
+                    }
+                    // Reset input so the same file can be selected again
+                    event.target.value = '';
+                }
+            };
+        }
+    </script>
+</body>
+
+</html>
