@@ -40,6 +40,20 @@ class SyncManager {
     // Connection Management
     // =========================================================================
 
+    /**
+     * Set a callback to be notified of connection state changes
+     * @param {Function} callback - Function to call with (connected: boolean)
+     */
+    onConnectionChange(callback) {
+        this._connectionCallback = callback;
+    }
+
+    _notifyConnectionChange() {
+        if (this._connectionCallback) {
+            this._connectionCallback(this.connected);
+        }
+    }
+
     connect() {
         return new Promise((resolve, reject) => {
             try {
@@ -50,6 +64,7 @@ class SyncManager {
                 this.socket.on('connect', () => {
                     console.log('Socket connected');
                     this.connected = true;
+                    this._notifyConnectionChange();
                     this.joinRoom();
                     resolve();
                 });
@@ -57,10 +72,13 @@ class SyncManager {
                 this.socket.on('disconnect', () => {
                     console.log('Socket disconnected');
                     this.connected = false;
+                    this._notifyConnectionChange();
                 });
 
                 this.socket.on('connect_error', (error) => {
                     console.error('Socket connection error:', error);
+                    this.connected = false;
+                    this._notifyConnectionChange();
                     reject(error);
                 });
 

@@ -493,6 +493,11 @@
                         userName: this.userName
                     });
 
+                    // Listen for connection state changes
+                    this.syncManager.onConnectionChange((connected) => {
+                        this.connected = connected;
+                    });
+
                     // Get user color from whiteboard
                     this.userColor = this.whiteboard.localUserColor;
 
@@ -516,7 +521,6 @@
                     try {
                         // Connect to socket
                         await this.syncManager.connect();
-                        this.connected = true;
 
                         // Load existing strokes
                         await this.syncManager.loadDocument();
