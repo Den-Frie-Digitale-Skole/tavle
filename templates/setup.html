@@ -45,19 +45,6 @@
                     </div>
                 </div>
 
-                <!-- Setup Complete Message -->
-                {% if setup_complete %}
-                <div class="border-2 border-emerald-600 p-4 mb-6" style="background: #d1fae5; transform: rotate(-0.3deg);">
-                    <div class="flex items-center gap-2 text-emerald-800 mb-1">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span class="font-black uppercase tracking-wide" x-text="t('setup.setupComplete')"></span>
-                    </div>
-                    <p class="text-sm text-emerald-700" x-text="t('setup.setupCompleteDesc')"></p>
-                </div>
-                {% endif %}
-
                 <!-- API Key Section -->
                 <div class="mb-6">
                     <label class="block text-xs font-bold text-gray-900 uppercase tracking-wider mb-2">
@@ -107,12 +94,24 @@
                     </div>
                 </div>
 
-                <!-- Continue Button -->
-                <a href="/" 
-                    class="block w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-center transition-colors uppercase tracking-wider"
-                    style="border: 3px solid #1e1e1e; transform: rotate(-0.3deg);"
-                    x-text="t('setup.continueBtn')">
-                </a>
+                <!-- Confirmation Checkbox and Button -->
+                <div x-data="{ confirmed: false }">
+                    <label class="flex items-start gap-3 mb-4 cursor-pointer select-none">
+                        <input type="checkbox" x-model="confirmed" 
+                            class="mt-1 w-5 h-5 border-2 border-gray-900 rounded-none accent-emerald-500">
+                        <span class="text-sm text-gray-700" x-text="t('setup.confirmSaved')"></span>
+                    </label>
+                    
+                    <form action="/setup/complete" method="POST">
+                        <button type="submit"
+                            :disabled="!confirmed"
+                            :class="confirmed ? 'bg-emerald-500 hover:bg-emerald-600 text-white cursor-pointer' : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
+                            class="block w-full py-4 font-black text-center transition-colors uppercase tracking-wider"
+                            style="border: 3px solid #1e1e1e; transform: rotate(-0.3deg);"
+                            x-text="t('setup.continueBtn')">
+                        </button>
+                    </form>
+                </div>
 
                 <!-- CLI Hint -->
                 <p class="text-center text-xs text-gray-600 mt-4 font-medium">
@@ -126,13 +125,6 @@
                 <div class="flex-1 h-2 bg-yellow-400"></div>
                 <div class="flex-1 h-2 bg-gray-900"></div>
             </div>
-        </div>
-
-        <!-- Footer with language selector -->
-        <div class="flex items-center justify-between mt-6">
-            <p class="text-xs text-gray-500 font-medium">
-                <span x-text="t('setup.configSaved')"></span> <code class="bg-white px-2 py-0.5 border border-gray-300 font-mono">.whiteboard_setup.json</code>
-            </p>
         </div>
     </div>
 {% endblock %}

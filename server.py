@@ -13,7 +13,7 @@ from flask_limiter.util import get_remote_address
 from models import init_db, get_document_by_token, open_db_connection, close_db_connection, get_pool_status
 from api import api_bp
 from socketio_handlers import register_socketio_handlers
-from setup import needs_setup, complete_setup, get_admin_token, get_secret_key
+from setup import needs_setup, complete_setup, get_admin_token, get_secret_key, get_or_create_admin_token, mark_setup_complete
 
 # =============================================================================
 # Logging Setup
@@ -207,12 +207,26 @@ def setup_page():
         # Setup already complete, redirect to landing
         return redirect(url_for('index'))
     
-    # Complete setup and get the generated token
-    config = complete_setup()
+    # Get or generate the admin token (but don't mark setup as complete)
+    admin_token = get_or_create_admin_token()
     
     return render_template('setup.html', 
-                           admin_token=config['admin_api_token'],
-                           setup_complete=True)
+                           admin_token=admin_token,
+                           setup_complete=False)
+
+
+@app.route('/setup/complete', methods=['POST'])
+@limiter.limit("5 per minute")
+def complete_setup_route():
+    """
+    Mark setup as complete when user confirms they've saved their token.
+    """
+    if not needs_setup():
+        # Already complete
+        return redirect(url_for('index'))
+    
+    mark_setup_complete()
+    return redirect(url_for('index'))
 
 
 @app.route('/')

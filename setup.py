@@ -73,6 +73,39 @@ def save_db_config(key: str, value: str) -> bool:
         return False
 
 
+def get_or_create_admin_token() -> str:
+    """
+    Get the admin token, or generate and save one if it doesn't exist.
+    Does NOT mark setup as complete - that must be done explicitly.
+    """
+    # Check if token already exists in database
+    existing_token = get_db_config(SETTING_ADMIN_TOKEN)
+    if existing_token:
+        return existing_token
+    
+    # Generate new token and save it
+    new_token = generate_api_key()
+    save_db_config(SETTING_ADMIN_TOKEN, new_token)
+    
+    # Also generate and save secret key if not exists
+    if not get_db_config(SETTING_SECRET_KEY):
+        save_db_config(SETTING_SECRET_KEY, generate_secret_key())
+    
+    logger.info("Generated new admin token (setup not yet complete)")
+    return new_token
+
+
+def mark_setup_complete() -> bool:
+    """
+    Mark the setup as complete in the database.
+    Called when the user confirms they have saved their token.
+    """
+    success = save_db_config(SETTING_SETUP_COMPLETE, 'true')
+    if success:
+        logger.info("Setup marked as complete by user")
+    return success
+
+
 def complete_setup(admin_token: str = None) -> dict:
     """
     Complete the first-run setup.
