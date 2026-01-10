@@ -10,6 +10,9 @@ from peewee import (
     Model, SqliteDatabase, PostgresqlDatabase,
     CharField, DateTimeField, FloatField, TextField, ForeignKeyField
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Database configuration - SQLite by default, PostgreSQL via env var
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -68,7 +71,12 @@ class Stroke(BaseModel):
 
     def get_points(self):
         """Parse points JSON."""
-        return json.loads(self.points) if self.points else []
+        try:
+            return json.loads(self.points) if self.points else []
+        except json.JSONDecodeError:
+            logger.error(f"Failed to decode points JSON for stroke {self.id}")
+            return []
+    
 
     def set_points(self, points_list):
         """Serialize points to JSON."""
@@ -76,7 +84,12 @@ class Stroke(BaseModel):
 
     def get_transform(self):
         """Parse transform JSON."""
-        return json.loads(self.transform) if self.transform else {'x': 0, 'y': 0, 'scale': 1}
+        try:
+            return json.loads(self.transform) if self.transform else {'x': 0, 'y': 0, 'scale': 1}
+        except json.JSONDecodeError:
+            logger.error(f"Failed to decode transform JSON for stroke {self.id}")
+            return {'x': 0, 'y': 0, 'scale': 1}
+    
 
     def set_transform(self, transform_dict):
         """Serialize transform to JSON."""
@@ -93,6 +106,20 @@ class Stroke(BaseModel):
             'createdAt': self.created_at.isoformat()
         }
 
+    @classmethod
+    def create_new(cls, document_id, points, color='#000000', stroke_width=4.0, transform=None):
+        """Create a new stroke with a generated UUID."""
+        stroke_id = str(uuid.uuid4())
+        stroke = cls(
+            id=stroke_id,
+            document_id=document_id,
+            color=color,
+            stroke_width=stroke_width
+        )
+        stroke.set_points(points)
+        if transform:
+            stroke.set_transform(transform)
+        return stroke
 
 class Image(BaseModel):
     """Represents an image on the whiteboard."""

@@ -62,14 +62,25 @@ class Whiteboard {
         this.historyIndex = -1;  // Current position in history
         this.maxHistorySize = 50;  // Limit history size
 
-        // Perfect-Freehand options
+        // Perfect-Freehand options - tuned for smooth drawing
         this.freehandOptions = {
             size: this.strokeWidth,
-            thinning: 0.5,
-            smoothing: 0.5,
-            streamline: 0.5,
+            thinning: 0.6,
+            smoothing: 0.8,
+            streamline: 0.7,
+            easing: (t) => t,
             simulatePressure: true,
-            last: true
+            last: true,
+            start: {
+                cap: true,
+                taper: 0,
+                easing: (t) => t
+            },
+            end: {
+                cap: true,
+                taper: 0,
+                easing: (t) => t
+            }
         };
 
         // Bind event handlers
@@ -440,12 +451,38 @@ class Whiteboard {
         }
 
         if (this.isDrawing && this.currentStroke) {
-            // Add point to current stroke
-            this.currentStroke.points.push({
+            const lastPoint = this.currentStroke.points[this.currentStroke.points.length - 1];
+            const newPoint = {
                 x: point.x,
                 y: point.y,
                 pressure: e.pressure || 0.5
-            });
+            };
+            
+            // Interpolate points if the distance is too large for smooth curves
+            if (lastPoint) {
+                const dx = newPoint.x - lastPoint.x;
+                const dy = newPoint.y - lastPoint.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                // Add intermediate points for smoother curves
+                const minDistance = 2; // Minimum distance between points
+                if (distance > minDistance) {
+                    const steps = Math.ceil(distance / minDistance);
+                    for (let i = 1; i < steps; i++) {
+                        const t = i / steps;
+                        // Smooth interpolation with slight pressure blending
+                        const interpPressure = lastPoint.pressure + (newPoint.pressure - lastPoint.pressure) * t;
+                        this.currentStroke.points.push({
+                            x: lastPoint.x + dx * t,
+                            y: lastPoint.y + dy * t,
+                            pressure: interpPressure
+                        });
+                    }
+                }
+            }
+            
+            // Add the actual point
+            this.currentStroke.points.push(newPoint);
 
             // Render on active canvas
             this._renderStrokeActive(this.currentStroke);
@@ -454,7 +491,7 @@ class Whiteboard {
             if (this.onStrokePoint) {
                 this.onStrokePoint({
                     strokeId: this.currentStrokeId,
-                    point: { x: point.x, y: point.y, pressure: e.pressure || 0.5 },
+                    point: newPoint,
                     color: this.color,
                     strokeWidth: this.strokeWidth
                 });
@@ -782,22 +819,60 @@ class Whiteboard {
         // Try to use getStroke from perfect-freehand
         if (typeof getStroke === 'function') {
             try {
-                const outlinePoints = getStroke(transformedPoints, {
-                    ...this.freehandOptions,
-                    size: stroke.strokeWidth * this.zoom * (transform.scale || 1)
-                });
+                // Use different options for live remote strokes to minimize snap on completion
+                const freehandOpts = stroke.isRemoteLive 
+                    ? {
+                        ...this.freehandOptions,
+                        size: stroke.strokeWidth * this.zoom * (transform.scale || 1),
+                        thinning: 0.3,  // Reduced thinning for live remote strokes
+                        smoothing: 0.5,  // Less smoothing during live drawing
+                        streamline: 0.5,
+                        simulatePressure: true,
+                        last: false  // Don't treat as finished stroke
+                    }
+                    : {
+                        ...this.freehandOptions,
+                        size: stroke.strokeWidth * this.zoom * (transform.scale || 1)
+                    };
+                
+                const outlinePoints = getStroke(transformedPoints, freehandOpts);
 
                 if (outlinePoints && outlinePoints.length >= 2) {
+                    // Use reduced opacity for live remote strokes
+                    if (stroke.isRemoteLive) {
+                        ctx.globalAlpha = 0.6;
+                    }
+                    
                     ctx.fillStyle = stroke.color;
                     ctx.beginPath();
-                    ctx.moveTo(outlinePoints[0][0], outlinePoints[0][1]);
-
-                    for (let i = 1; i < outlinePoints.length; i++) {
-                        ctx.lineTo(outlinePoints[i][0], outlinePoints[i][1]);
+                    
+                    // Use smooth curves for the outline path
+                    const [firstX, firstY] = outlinePoints[0];
+                    ctx.moveTo(firstX, firstY);
+                    
+                    // Use quadratic curves for smoother rendering
+                    for (let i = 1; i < outlinePoints.length - 1; i++) {
+                        const [x0, y0] = outlinePoints[i];
+                        const [x1, y1] = outlinePoints[i + 1];
+                        const midX = (x0 + x1) / 2;
+                        const midY = (y0 + y1) / 2;
+                        ctx.quadraticCurveTo(x0, y0, midX, midY);
+                    }
+                    
+                    // Connect to the last point
+                    if (outlinePoints.length > 1) {
+                        const [lastX, lastY] = outlinePoints[outlinePoints.length - 1];
+                        ctx.lineTo(lastX, lastY);
                     }
 
                     ctx.closePath();
                     ctx.fill();
+                    
+                    // Reset opacity
+                    if (stroke.isRemoteLive) {
+                        ctx.globalAlpha = 1.0;
+                    }
+                    
                     rendered = true;
                 }
             } catch (e) {
@@ -805,7 +880,7 @@ class Whiteboard {
             }
         }
 
-        // Fallback: simple line rendering if getStroke failed or returned empty
+        // Fallback: smooth line rendering if getStroke failed or returned empty
         if (!rendered) {
             ctx.strokeStyle = stroke.color;
             ctx.lineWidth = stroke.strokeWidth * this.zoom * (transform.scale || 1);
@@ -1266,7 +1341,8 @@ class Whiteboard {
                 points: [],
                 color: color || '#888888',
                 strokeWidth: strokeWidth || 4,
-                transform: { x: 0, y: 0, scale: 1 }
+                transform: { x: 0, y: 0, scale: 1 },
+                isRemoteLive: true  // Flag for live remote strokes
             });
         }
 
