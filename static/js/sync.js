@@ -4,9 +4,9 @@
  * Connects the Whiteboard to the server and manages event flow.
  */
 class SyncManager {
-    constructor(whiteboard, documentId, options = {}) {
+    constructor(whiteboard, tokenId, options = {}) {
         this.whiteboard = whiteboard;
-        this.documentId = documentId;
+        this.tokenId = tokenId;
         this.socket = null;
         this.connected = false;
 
@@ -76,7 +76,7 @@ class SyncManager {
     disconnect() {
         if (this.socket) {
             this.socket.emit('leave', { 
-                documentId: this.documentId,
+                tokenId: this.tokenId,
                 userId: this.userId
             });
             this.socket.disconnect();
@@ -88,7 +88,7 @@ class SyncManager {
     joinRoom() {
         if (this.socket && this.connected) {
             this.socket.emit('join', { 
-                documentId: this.documentId,
+                tokenId: this.tokenId,
                 userId: this.userId,
                 userName: this.userName
             });
@@ -108,7 +108,7 @@ class SyncManager {
         // Stroke point (throttled)
         this.whiteboard.onStrokePoint = (data) => {
             this._emitThrottled('stroke-point', {
-                documentId: this.documentId,
+                tokenId: this.tokenId,
                 ...data
             });
         };
@@ -119,7 +119,7 @@ class SyncManager {
             this._flushThrottled();
 
             this._emit('stroke-complete', {
-                documentId: this.documentId,
+                tokenId: this.tokenId,
                 ...data
             });
         };
@@ -127,7 +127,7 @@ class SyncManager {
         // Stroke update (move/transform)
         this.whiteboard.onStrokeUpdate = (data) => {
             this._emit('stroke-update', {
-                documentId: this.documentId,
+                tokenId: this.tokenId,
                 ...data
             });
         };
@@ -135,7 +135,7 @@ class SyncManager {
         // Stroke delete
         this.whiteboard.onStrokeDelete = (data) => {
             this._emit('stroke-delete', {
-                documentId: this.documentId,
+                tokenId: this.tokenId,
                 ...data
             });
         };
@@ -143,14 +143,14 @@ class SyncManager {
         // Clear canvas
         this.whiteboard.onClear = () => {
             this._emit('clear', {
-                documentId: this.documentId
+                tokenId: this.tokenId
             });
         };
 
         // Image add
         this.whiteboard.onImageAdd = (data) => {
             this._emit('image-add', {
-                documentId: this.documentId,
+                tokenId: this.tokenId,
                 imageId: data.id,
                 data: data.data,
                 x: data.x,
@@ -164,7 +164,7 @@ class SyncManager {
         // Image update (move/transform)
         this.whiteboard.onImageUpdate = (data) => {
             this._emit('image-update', {
-                documentId: this.documentId,
+                tokenId: this.tokenId,
                 ...data
             });
         };
@@ -172,7 +172,7 @@ class SyncManager {
         // Image delete
         this.whiteboard.onImageDelete = (data) => {
             this._emit('image-delete', {
-                documentId: this.documentId,
+                tokenId: this.tokenId,
                 ...data
             });
         };
@@ -180,7 +180,7 @@ class SyncManager {
         // Cursor move (throttled)
         this.whiteboard.onCursorMove = (cursor) => {
             this._emitCursorThrottled({
-                documentId: this.documentId,
+                tokenId: this.tokenId,
                 userId: this.userId,
                 userName: this.userName,
                 cursor: cursor
@@ -194,7 +194,7 @@ class SyncManager {
     _bindSocketEvents() {
         // Joined room confirmation
         this.socket.on('joined', (data) => {
-            console.log('Joined room:', data.documentId);
+            console.log('Joined room:', data.tokenId);
         });
 
         // Remote stroke point
@@ -353,7 +353,7 @@ class SyncManager {
 
     async loadDocument() {
         try {
-            const response = await fetch(`/api/docs/${this.documentId}`);
+            const response = await fetch(`/get/${this.tokenId}`);
 
             if (!response.ok) {
                 throw new Error(`Failed to load document: ${response.status}`);
@@ -390,65 +390,6 @@ class SyncManager {
             return data;
         } catch (error) {
             console.error('Error loading document:', error);
-            throw error;
-        }
-    }
-
-    async saveStroke(stroke) {
-        try {
-            const response = await fetch(`/api/docs/${this.documentId}/strokes`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    id: stroke.id,
-                    points: stroke.points,
-                    color: stroke.color,
-                    strokeWidth: stroke.strokeWidth,
-                    transform: stroke.transform
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to save stroke: ${response.status}`);
-            }
-
-            return await response.json();
-        } catch (error) {
-            console.error('Error saving stroke:', error);
-            throw error;
-        }
-    }
-
-    async deleteStrokes(strokeIds) {
-        try {
-            const promises = strokeIds.map(id =>
-                fetch(`/api/docs/${this.documentId}/strokes/${id}`, {
-                    method: 'DELETE'
-                })
-            );
-
-            await Promise.all(promises);
-        } catch (error) {
-            console.error('Error deleting strokes:', error);
-            throw error;
-        }
-    }
-
-    async clearDocument() {
-        try {
-            const response = await fetch(`/api/docs/${this.documentId}/strokes`, {
-                method: 'DELETE'
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to clear document: ${response.status}`);
-            }
-
-            return await response.json();
-        } catch (error) {
-            console.error('Error clearing document:', error);
             throw error;
         }
     }

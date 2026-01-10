@@ -2,15 +2,26 @@
 Main Flask application with SocketIO for real-time collaboration.
 """
 import os
-from flask import Flask, render_template, redirect, url_for, request
+from flask import Flask, render_template, redirect, url_for, abort
 from flask_socketio import SocketIO, join_room, leave_room, emit
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from api import BoardResource
 
-from models import init_db, get_or_create_document, Stroke, Document, Image
+from models import init_db, get_or_create_document, get_document_by_token, Stroke, Document, Image
 from api import api_bp
 
 # Initialize Flask app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+
+# Initialize rate limiter
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://",
+)
 
 # Initialize SocketIO with eventlet for async support
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
@@ -20,26 +31,53 @@ app.register_blueprint(api_bp)
 
 
 # =============================================================================
-# Routes
+# Public Routes
 # =============================================================================
 
 @app.route('/')
+@limiter.limit("30 per minute")
 def index():
-    """Redirect to a default document."""
-    return redirect(url_for('document', doc_id='default'))
+    """Landing page."""
+    return render_template('landing.html')
 
 
-@app.route('/doc/<doc_id>')
-def document(doc_id):
-    """Render whiteboard for a specific document."""
-    # Ensure document exists
-    get_or_create_document(doc_id)
-    return render_template('index.html', document_id=doc_id)
 
+@app.route('/board/<token>')
+@app.route('/b/<token>')
+@limiter.limit("30 per minute")
+def board(token):
+    """Render whiteboard for a specific document using access token."""
+    doc = get_document_by_token(token)
+    if not doc:
+        abort(404)
+    return render_template('index.html', token_id=token, access_token=token)
+
+
+@app.route('/get/<token>')
+@limiter.limit("30 per minute")
+def get_document(token):
+    """Redirect to the whiteboard page for the document with the given token."""
+    doc = get_document_by_token(token)
+    
+    if not doc:
+        print(f'Document not found for token: {token}')
+        abort(404)
+
+    return doc.to_dict()
 
 # =============================================================================
 # Socket Events
 # =============================================================================
+
+def get_doc_from_token(token):
+    """Helper to get document from token, returns (doc, doc_id) or (None, None)."""
+    if not token:
+        return None, None
+    doc = get_document_by_token(token)
+    if not doc:
+        return None, None
+    return doc, doc.id
+
 
 @socketio.on('connect')
 def handle_connect():
@@ -57,75 +95,82 @@ def handle_disconnect():
 def handle_join(data):
     """
     Join a document room for real-time collaboration.
-    data: { documentId: string, userId: string, userName: string }
+    data: { tokenId: string, userId: string, userName: string }
     """
-    doc_id = data.get('documentId')
+    token = data.get('tokenId')
     user_id = data.get('userId')
     user_name = data.get('userName', 'Anonymous')
     
-    if doc_id:
-        join_room(doc_id)
-        emit('joined', {'documentId': doc_id, 'message': f'Joined room {doc_id}'})
-        print(f'Client {user_name} ({user_id}) joined room: {doc_id}')
-        
-        # Notify others that a user joined
-        if user_id:
-            emit('user-joined', {
-                'userId': user_id,
-                'userName': user_name
-            }, to=doc_id, include_self=False)
+    doc, doc_id = get_doc_from_token(token)
+    if not doc:
+        emit('error', {'message': 'Invalid token'})
+        return
+    
+    # Use token as room ID (more secure than doc_id)
+    join_room(token)
+    emit('joined', {'tokenId': token, 'message': f'Joined room'})
+    print(f'Client {user_name} ({user_id}) joined room: {token[:10]}...')
+    
+    # Notify others that a user joined
+    if user_id:
+        emit('user-joined', {
+            'userId': user_id,
+            'userName': user_name
+        }, to=token, include_self=False)
 
 
 @socketio.on('leave')
 def handle_leave(data):
     """
     Leave a document room.
-    data: { documentId: string, userId: string }
+    data: { tokenId: string, userId: string }
     """
-    doc_id = data.get('documentId')
+    token = data.get('tokenId')
     user_id = data.get('userId')
     
-    if doc_id:
-        leave_room(doc_id)
-        print(f'Client {user_id} left room: {doc_id}')
+    if token:
+        leave_room(token)
+        print(f'Client {user_id} left room: {token[:10]}...')
         
         # Notify others that a user left
         if user_id:
             emit('user-left', {
                 'userId': user_id
-            }, to=doc_id, include_self=False)
+            }, to=token, include_self=False)
 
 
 @socketio.on('cursor-move')
 def handle_cursor_move(data):
     """
     Broadcast cursor position to other users in the room.
-    data: { documentId, userId, userName, cursor: {x, y} }
+    data: { tokenId, userId, userName, cursor: {x, y} }
     """
-    doc_id = data.get('documentId')
-    if doc_id:
-        emit('remote-cursor', data, to=doc_id, include_self=False)
+    token = data.get('tokenId')
+    if token:
+        emit('remote-cursor', data, to=token, include_self=False)
 
 
 @socketio.on('stroke-point')
 def handle_stroke_point(data):
     """
     Broadcast a stroke point to other users in the room.
-    data: { documentId, point: {x, y, pressure}, color, strokeWidth, strokeId }
+    data: { tokenId, point: {x, y, pressure}, color, strokeWidth, strokeId }
     """
-    doc_id = data.get('documentId')
-    if doc_id:
-        emit('remote-stroke-point', data, to=doc_id, include_self=False)
+    token = data.get('tokenId')
+    if token:
+        emit('remote-stroke-point', data, to=token, include_self=False)
 
 
 @socketio.on('stroke-complete')
 def handle_stroke_complete(data):
     """
     Broadcast completed stroke and persist to database.
-    data: { documentId, strokeId, points: [{x, y, pressure}], color, strokeWidth, transform }
+    data: { tokenId, strokeId, points: [{x, y, pressure}], color, strokeWidth, transform }
     """
-    doc_id = data.get('documentId')
-    if doc_id:
+    token = data.get('tokenId')
+    doc, doc_id = get_doc_from_token(token)
+    
+    if doc:
         # Persist stroke to database
         try:
             stroke = Stroke.create_new(
@@ -139,25 +184,25 @@ def handle_stroke_complete(data):
             stroke.save(force_insert=True)
             
             # Update document
-            doc = Document.get_by_id(doc_id)
             doc.save()
         except Exception as e:
             print(f'Error saving stroke: {e}')
         
         # Broadcast to others
-        emit('remote-stroke-complete', data, to=doc_id, include_self=False)
+        emit('remote-stroke-complete', data, to=token, include_self=False)
 
 
 @socketio.on('stroke-update')
 def handle_stroke_update(data):
     """
     Broadcast stroke update (move/transform) and persist.
-    data: { documentId, strokeId, transform: {x, y, scale} }
+    data: { tokenId, strokeId, transform: {x, y, scale} }
     """
-    doc_id = data.get('documentId')
+    token = data.get('tokenId')
     stroke_id = data.get('strokeId')
+    doc, doc_id = get_doc_from_token(token)
     
-    if doc_id and stroke_id:
+    if doc and stroke_id:
         # Update in database
         try:
             stroke = Stroke.get((Stroke.id == stroke_id) & (Stroke.document_id == doc_id))
@@ -169,23 +214,24 @@ def handle_stroke_update(data):
             print(f'Error updating stroke: {e}')
         
         # Broadcast to others
-        emit('remote-stroke-update', data, to=doc_id, include_self=False)
+        emit('remote-stroke-update', data, to=token, include_self=False)
 
 
 @socketio.on('stroke-delete')
 def handle_stroke_delete(data):
     """
     Broadcast stroke deletion and remove from database.
-    data: { documentId, strokeId } or { documentId, strokeIds: [] }
+    data: { tokenId, strokeId } or { tokenId, strokeIds: [] }
     """
-    doc_id = data.get('documentId')
+    token = data.get('tokenId')
     stroke_ids = data.get('strokeIds', [])
+    doc, doc_id = get_doc_from_token(token)
     
     # Support single strokeId for backwards compatibility
     if not stroke_ids and data.get('strokeId'):
         stroke_ids = [data.get('strokeId')]
     
-    if doc_id and stroke_ids:
+    if doc and stroke_ids:
         # Delete from database
         try:
             Stroke.delete().where(
@@ -195,19 +241,20 @@ def handle_stroke_delete(data):
             print(f'Error deleting strokes: {e}')
         
         # Broadcast to others
-        emit('remote-stroke-delete', {'documentId': doc_id, 'strokeIds': stroke_ids}, 
-             to=doc_id, include_self=False)
+        emit('remote-stroke-delete', {'tokenId': token, 'strokeIds': stroke_ids}, 
+             to=token, include_self=False)
 
 
 @socketio.on('clear')
 def handle_clear(data):
     """
     Clear all strokes from a document.
-    data: { documentId }
+    data: { tokenId }
     """
-    doc_id = data.get('documentId')
+    token = data.get('tokenId')
+    doc, doc_id = get_doc_from_token(token)
     
-    if doc_id:
+    if doc:
         # Clear from database
         try:
             Stroke.delete().where(Stroke.document_id == doc_id).execute()
@@ -216,17 +263,19 @@ def handle_clear(data):
             print(f'Error clearing strokes: {e}')
         
         # Broadcast to others
-        emit('remote-clear', {'documentId': doc_id}, to=doc_id, include_self=False)
+        emit('remote-clear', {'tokenId': token}, to=token, include_self=False)
 
 
 @socketio.on('image-add')
 def handle_image_add(data):
     """
     Broadcast image addition and persist to database.
-    data: { documentId, imageId, data, x, y, width, height, transform }
+    data: { tokenId, imageId, data, x, y, width, height, transform }
     """
-    doc_id = data.get('documentId')
-    if doc_id:
+    token = data.get('tokenId')
+    doc, doc_id = get_doc_from_token(token)
+    
+    if doc:
         # Persist image to database
         try:
             image = Image.create_new(
@@ -242,25 +291,25 @@ def handle_image_add(data):
             image.save(force_insert=True)
             
             # Update document
-            doc = Document.get_by_id(doc_id)
             doc.save()
         except Exception as e:
             print(f'Error saving image: {e}')
         
         # Broadcast to others
-        emit('remote-image-add', data, to=doc_id, include_self=False)
+        emit('remote-image-add', data, to=token, include_self=False)
 
 
 @socketio.on('image-update')
 def handle_image_update(data):
     """
     Broadcast image update (move/transform) and persist.
-    data: { documentId, imageId, transform: {x, y, scale}, x, y, width, height }
+    data: { tokenId, imageId, transform: {x, y, scale}, x, y, width, height }
     """
-    doc_id = data.get('documentId')
+    token = data.get('tokenId')
     image_id = data.get('imageId')
+    doc, doc_id = get_doc_from_token(token)
     
-    if doc_id and image_id:
+    if doc and image_id:
         # Update in database
         try:
             image = Image.get((Image.id == image_id) & (Image.document_id == doc_id))
@@ -281,23 +330,24 @@ def handle_image_update(data):
             print(f'Error updating image: {e}')
         
         # Broadcast to others
-        emit('remote-image-update', data, to=doc_id, include_self=False)
+        emit('remote-image-update', data, to=token, include_self=False)
 
 
 @socketio.on('image-delete')
 def handle_image_delete(data):
     """
     Broadcast image deletion and remove from database.
-    data: { documentId, imageId } or { documentId, imageIds: [] }
+    data: { tokenId, imageId } or { tokenId, imageIds: [] }
     """
-    doc_id = data.get('documentId')
+    token = data.get('tokenId')
     image_ids = data.get('imageIds', [])
+    doc, doc_id = get_doc_from_token(token)
     
     # Support single imageId for backwards compatibility
     if not image_ids and data.get('imageId'):
         image_ids = [data.get('imageId')]
     
-    if doc_id and image_ids:
+    if doc and image_ids:
         # Delete from database
         try:
             Image.delete().where(
@@ -307,8 +357,8 @@ def handle_image_delete(data):
             print(f'Error deleting images: {e}')
         
         # Broadcast to others
-        emit('remote-image-delete', {'documentId': doc_id, 'imageIds': image_ids}, 
-             to=doc_id, include_self=False)
+        emit('remote-image-delete', {'tokenId': token, 'imageIds': image_ids}, 
+             to=token, include_self=False)
 
 
 # =============================================================================

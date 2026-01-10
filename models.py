@@ -5,10 +5,11 @@ SQLite-first design with easy PostgreSQL migration support.
 import os
 import json
 import uuid
+import secrets
 from datetime import datetime
 from peewee import (
     Model, SqliteDatabase, PostgresqlDatabase,
-    CharField, DateTimeField, FloatField, TextField, ForeignKeyField
+    CharField, DateTimeField, FloatField, TextField, ForeignKeyField, BooleanField
 )
 import logging
 
@@ -40,7 +41,9 @@ class BaseModel(Model):
 class Document(BaseModel):
     """Represents a whiteboard document/room."""
     id = CharField(primary_key=True, max_length=255)
+    access_token = CharField(max_length=64, unique=True, index=True)  # Long token for URL access
     name = CharField(max_length=255, default='Untitled')
+    is_active = BooleanField(default=True)  # Can be deactivated by admin
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
 
@@ -48,15 +51,39 @@ class Document(BaseModel):
         self.updated_at = datetime.utcnow()
         return super().save(*args, **kwargs)
 
-    def to_dict(self):
-        return {
+    def to_dict(self, include_strokes=True):
+        result = {
             'id': self.id,
+            'access_token': self.access_token,
             'name': self.name,
+            'is_active': self.is_active,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
-            'strokes': [stroke.to_dict() for stroke in self.strokes],
-            'images': [image.to_dict() for image in self.images]
         }
+        if include_strokes:
+            result['strokes'] = [stroke.to_dict() for stroke in self.strokes]
+            result['images'] = [image.to_dict() for image in self.images]
+        return result
+
+    @classmethod
+    def create_new(cls, name='Untitled'):
+        """Create a new document with generated ID and access token."""
+        doc_id = str(uuid.uuid4())
+        access_token = secrets.token_urlsafe(32)  # 43 characters, URL-safe
+        doc = cls.create(
+            id=doc_id,
+            access_token=access_token,
+            name=name
+        )
+        return doc
+
+    @classmethod
+    def get_by_token(cls, token):
+        """Get document by access token."""
+        try:
+            return cls.get(cls.access_token == token, cls.is_active == True)
+        except cls.DoesNotExist:
+            return None
 
 
 class Stroke(BaseModel):
@@ -179,6 +206,13 @@ def init_db():
 
 
 def get_or_create_document(doc_id):
-    """Get existing document or create new one."""
-    doc, created = Document.get_or_create(id=doc_id)
-    return doc
+    """Get existing document by ID (legacy support)."""
+    try:
+        return Document.get_by_id(doc_id)
+    except Document.DoesNotExist:
+        return None
+
+
+def get_document_by_token(token):
+    """Get document by access token."""
+    return Document.get_by_token(token)

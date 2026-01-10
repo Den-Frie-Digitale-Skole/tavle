@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whiteboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div class="max-w-md w-full">
+        <div class="bg-white rounded-2xl shadow-xl p-8 text-center">
+            <!-- Logo/Icon -->
+            <div class="w-16 h-16 bg-blue-100 rounded-2xl mx-auto mb-6 flex items-center justify-center">
+                <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+            </div>
+
+            <h1 class="text-2xl font-bold text-gray-800 mb-2">Collaborative Whiteboard</h1>
+            <p class="text-gray-600 mb-8">
+                A simple, real-time collaborative whiteboard for teams.
+            </p>
+
+            <!-- Info Cards -->
+            <div class="space-y-4 text-left mb-8">
+                <div class="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                    <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-gray-800 text-sm">Real-time Collaboration</h3>
+                        <p class="text-xs text-gray-500">See everyone's cursors and strokes in real-time</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                    <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-gray-800 text-sm">Image Support</h3>
+                        <p class="text-xs text-gray-500">Paste or upload images directly to the board</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                    <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-gray-800 text-sm">Private Boards</h3>
+                        <p class="text-xs text-gray-500">Each board has a unique, secure access token</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CTA -->
+            <div class="bg-gray-50 rounded-xl p-4">
+                <p class="text-sm text-gray-600 mb-2">
+                    Need a board? Contact your administrator to create one.
+                </p>
+                <p class="text-xs text-gray-400">
+                    Boards are created via API with admin authentication.
+                </p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <p class="text-center text-xs text-gray-500 mt-6">
+            Built with Flask, Socket.IO, and ❤️
+        </p>
+    </div>
+</body>
+</html>
