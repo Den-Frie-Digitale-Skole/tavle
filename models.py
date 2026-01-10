@@ -124,6 +124,7 @@ class Stroke(BaseModel):
     color = CharField(max_length=20, default='#000000')
     stroke_width = FloatField(default=4.0)
     transform = TextField(default='{"x": 0, "y": 0, "scale": 1}')  # JSON: {x, y, scale}
+    z_index = FloatField(default=0)  # Z-order for layering (shared with images)
     created_at = DateTimeField(default=datetime.now)
 
     def get_points(self):
@@ -160,18 +161,20 @@ class Stroke(BaseModel):
             'color': self.color,
             'strokeWidth': self.stroke_width,
             'transform': self.get_transform(),
+            'zIndex': self.z_index,
             'createdAt': self.created_at.isoformat()
         }
 
     @classmethod
-    def create_new(cls, document_id, points, color='#000000', stroke_width=4.0, transform=None):
+    def create_new(cls, document_id, points, color='#000000', stroke_width=4.0, transform=None, z_index=0):
         """Create a new stroke with a generated UUID."""
         stroke_id = str(uuid.uuid4())
         stroke = cls(
             id=stroke_id,
             document_id=document_id,
             color=color,
-            stroke_width=stroke_width
+            stroke_width=stroke_width,
+            z_index=z_index
         )
         stroke.set_points(points)
         if transform:
@@ -188,6 +191,7 @@ class Image(BaseModel):
     width = FloatField(default=200)  # Display width
     height = FloatField(default=200)  # Display height
     transform = TextField(default='{"x": 0, "y": 0, "scale": 1}')  # JSON: {x, y, scale}
+    z_index = FloatField(default=0)  # Z-order for layering (shared with strokes)
     created_at = DateTimeField(default=datetime.now)
 
     def get_transform(self):
@@ -208,11 +212,12 @@ class Image(BaseModel):
             'width': self.width,
             'height': self.height,
             'transform': self.get_transform(),
+            'zIndex': self.z_index,
             'createdAt': self.created_at.isoformat()
         }
 
     @classmethod
-    def create_new(cls, document_id, data, x=0, y=0, width=200, height=200, transform=None):
+    def create_new(cls, document_id, data, x=0, y=0, width=200, height=200, transform=None, z_index=0):
         """Create a new image with a generated UUID."""
         image_id = str(uuid.uuid4())
         image = cls(
@@ -222,7 +227,8 @@ class Image(BaseModel):
             x=x,
             y=y,
             width=width,
-            height=height
+            height=height,
+            z_index=z_index
         )
         if transform:
             image.set_transform(transform)
@@ -263,9 +269,48 @@ class Settings(BaseModel):
 
 
 def init_db():
-    """Initialize database tables."""
+    """Initialize database tables and run migrations."""
     db.connect(reuse_if_open=True)
     db.create_tables([Document, Stroke, Image, Settings], safe=True)
+    
+    # Run migrations for existing databases
+    _run_migrations()
+
+
+def _run_migrations():
+    """Run database migrations for schema updates."""
+    # Migration: Add z_index column to Stroke and Image tables
+    try:
+        # Check if z_index column exists in Stroke table
+        cursor = db.execute_sql("PRAGMA table_info(stroke)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if 'z_index' not in columns:
+            logger.info("Migrating: Adding z_index column to Stroke table")
+            db.execute_sql("ALTER TABLE stroke ADD COLUMN z_index REAL DEFAULT 0")
+    except Exception as e:
+        logger.warning(f"Stroke migration check failed (may be PostgreSQL or new DB): {e}")
+        # For PostgreSQL, try different syntax
+        try:
+            db.execute_sql("ALTER TABLE stroke ADD COLUMN IF NOT EXISTS z_index REAL DEFAULT 0")
+        except Exception:
+            pass  # Column might already exist or DB doesn't support IF NOT EXISTS
+    
+    try:
+        # Check if z_index column exists in Image table
+        cursor = db.execute_sql("PRAGMA table_info(image)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if 'z_index' not in columns:
+            logger.info("Migrating: Adding z_index column to Image table")
+            db.execute_sql("ALTER TABLE image ADD COLUMN z_index REAL DEFAULT 0")
+    except Exception as e:
+        logger.warning(f"Image migration check failed (may be PostgreSQL or new DB): {e}")
+        # For PostgreSQL, try different syntax
+        try:
+            db.execute_sql("ALTER TABLE image ADD COLUMN IF NOT EXISTS z_index REAL DEFAULT 0")
+        except Exception:
+            pass  # Column might already exist or DB doesn't support IF NOT EXISTS
 
 
 def get_or_create_document(doc_id):

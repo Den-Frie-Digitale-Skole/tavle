@@ -339,7 +339,8 @@ def register_socketio_handlers(socketio):
                 points=validated['points'],
                 color=validated['color'],
                 stroke_width=validated['strokeWidth'],
-                transform=validated['transform']
+                transform=validated['transform'],
+                z_index=validated['zIndex']
             )
             stroke.id = validated['strokeId']
             stroke.save(force_insert=True)
@@ -355,7 +356,8 @@ def register_socketio_handlers(socketio):
             'points': validated['points'],
             'color': validated['color'],
             'strokeWidth': validated['strokeWidth'],
-            'transform': validated['transform']
+            'transform': validated['transform'],
+            'zIndex': validated['zIndex']
         }, to=token, include_self=False)
 
     @socketio.on('stroke-update')
@@ -513,7 +515,8 @@ def register_socketio_handlers(socketio):
                 y=validated['y'],
                 width=validated['width'],
                 height=validated['height'],
-                transform=validated['transform']
+                transform=validated['transform'],
+                z_index=validated['zIndex']
             )
             image.id = validated['imageId']
             image.save(force_insert=True)
@@ -531,7 +534,8 @@ def register_socketio_handlers(socketio):
             'y': validated['y'],
             'width': validated['width'],
             'height': validated['height'],
-            'transform': validated['transform']
+            'transform': validated['transform'],
+            'zIndex': validated['zIndex']
         }, to=token, include_self=False)
 
     @socketio.on('image-update')

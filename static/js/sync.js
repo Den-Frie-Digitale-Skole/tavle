@@ -175,7 +175,8 @@ class SyncManager {
                 y: data.y,
                 width: data.width,
                 height: data.height,
-                transform: data.transform
+                transform: data.transform,
+                zIndex: data.zIndex
             });
         };
 
@@ -386,7 +387,8 @@ class SyncManager {
                     points: s.points,
                     color: s.color,
                     strokeWidth: s.strokeWidth,
-                    transform: s.transform || { x: 0, y: 0, scale: 1 }
+                    transform: s.transform || { x: 0, y: 0, scale: 1 },
+                    zIndex: s.zIndex
                 }));
                 this.whiteboard.importStrokes(strokes);
             }
@@ -400,7 +402,8 @@ class SyncManager {
                     y: img.y,
                     width: img.width,
                     height: img.height,
-                    transform: img.transform || { x: 0, y: 0, scale: 1 }
+                    transform: img.transform || { x: 0, y: 0, scale: 1 },
+                    zIndex: img.zIndex
                 }));
                 this.whiteboard.importImages(images);
             }

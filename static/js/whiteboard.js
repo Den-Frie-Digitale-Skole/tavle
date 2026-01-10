@@ -22,6 +22,9 @@ class Whiteboard {
         this.selectedImages = new Set();  // Multi-select support for images
         this.imageCache = new Map();  // imageId -> HTMLImageElement (loaded images)
 
+        // Z-index counter for layering (strokes and images share the same z-space)
+        this.nextZIndex = 0;
+
         // Drawing settings
         this.color = options.color || '#000000';
         this.strokeWidth = options.strokeWidth || 4.0;
@@ -178,7 +181,8 @@ class Whiteboard {
                     y: centerY - height / 2,
                     width: width,
                     height: height,
-                    transform: { x: 0, y: 0, scale: 1 }
+                    transform: { x: 0, y: 0, scale: 1 },
+                    zIndex: this.nextZIndex++
                 };
                 
                 // Add to images map
@@ -346,7 +350,8 @@ class Whiteboard {
             points: [{ x: point.x, y: point.y, pressure: e.pressure || 0.5 }],
             color: this.color,
             strokeWidth: this.strokeWidth,
-            transform: { x: 0, y: 0, scale: 1 }
+            transform: { x: 0, y: 0, scale: 1 },
+            zIndex: this.nextZIndex++
         };
 
         // Emit stroke point
@@ -697,7 +702,8 @@ class Whiteboard {
                     points: this.currentStroke.points,
                     color: this.currentStroke.color,
                     strokeWidth: this.currentStroke.strokeWidth,
-                    transform: this.currentStroke.transform
+                    transform: this.currentStroke.transform,
+                    zIndex: this.currentStroke.zIndex
                 });
             }
 
@@ -1108,14 +1114,27 @@ class Whiteboard {
             this._drawGrid();
         }
 
-        // Draw all strokes
+        // Collect all elements (strokes and images) and sort by zIndex
+        const elements = [];
+        
         this.strokes.forEach(stroke => {
-            this._renderStroke(stroke, this.baseCtx);
+            elements.push({ type: 'stroke', data: stroke, zIndex: stroke.zIndex ?? 0 });
         });
-
-        // Draw all images
+        
         this.images.forEach(image => {
-            this._renderImage(image, this.baseCtx);
+            elements.push({ type: 'image', data: image, zIndex: image.zIndex ?? 0 });
+        });
+        
+        // Sort by zIndex (lower zIndex = drawn first = appears behind)
+        elements.sort((a, b) => a.zIndex - b.zIndex);
+        
+        // Render in z-order
+        elements.forEach(element => {
+            if (element.type === 'stroke') {
+                this._renderStroke(element.data, this.baseCtx);
+            } else if (element.type === 'image') {
+                this._renderImage(element.data, this.baseCtx);
+            }
         });
     }
 
@@ -1613,19 +1632,27 @@ class Whiteboard {
     }
 
     applyRemoteStrokeComplete(data) {
-        const { strokeId, points, color, strokeWidth, transform } = data;
+        const { strokeId, points, color, strokeWidth, transform, zIndex } = data;
 
         // Remove from remote strokes
         this.remoteStrokes.delete(strokeId);
 
         // Add to permanent strokes
-        this.strokes.set(strokeId, {
+        const stroke = {
             id: strokeId,
             points: points,
             color: color || '#000000',
             strokeWidth: strokeWidth || 4,
-            transform: transform || { x: 0, y: 0, scale: 1 }
-        });
+            transform: transform || { x: 0, y: 0, scale: 1 },
+            zIndex: zIndex ?? this.nextZIndex++
+        };
+        
+        // Update nextZIndex if received zIndex is higher
+        if (zIndex !== undefined && zIndex >= this.nextZIndex) {
+            this.nextZIndex = zIndex + 1;
+        }
+        
+        this.strokes.set(strokeId, stroke);
 
         // Redraw
         this._redrawBase();
@@ -1661,13 +1688,14 @@ class Whiteboard {
         this.images.clear();
         this.selectedImages.clear();
         this.imageCache.clear();
+        this.nextZIndex = 0;  // Reset z-index counter
         this._redrawBase();
         this._redrawActive();
     }
 
     // Image remote events
     applyRemoteImageAdd(data) {
-        const { imageId, data: imageData, x, y, width, height, transform } = data;
+        const { imageId, data: imageData, x, y, width, height, transform, zIndex } = data;
         
         const image = {
             id: imageId,
@@ -1676,8 +1704,14 @@ class Whiteboard {
             y: y || 0,
             width: width || 200,
             height: height || 200,
-            transform: transform || { x: 0, y: 0, scale: 1 }
+            transform: transform || { x: 0, y: 0, scale: 1 },
+            zIndex: zIndex ?? this.nextZIndex++
         };
+        
+        // Update nextZIndex if received zIndex is higher
+        if (zIndex !== undefined && zIndex >= this.nextZIndex) {
+            this.nextZIndex = zIndex + 1;
+        }
         
         this.images.set(imageId, image);
         
@@ -1970,6 +2004,7 @@ class Whiteboard {
         this.images.clear();
         this.selectedImages.clear();
         this.imageCache.clear();
+        this.nextZIndex = 0;  // Reset z-index counter
         this._redrawBase();
         this._redrawActive();
 
@@ -2015,9 +2050,22 @@ class Whiteboard {
 
     importStrokes(strokesArray) {
         this.strokes.clear();
+        let maxZIndex = -1;
+        
         strokesArray.forEach(stroke => {
+            // Ensure stroke has a zIndex
+            if (stroke.zIndex === undefined) {
+                stroke.zIndex = this.nextZIndex++;
+            }
+            maxZIndex = Math.max(maxZIndex, stroke.zIndex);
             this.strokes.set(stroke.id, stroke);
         });
+        
+        // Update nextZIndex to be higher than any imported stroke
+        if (maxZIndex >= this.nextZIndex) {
+            this.nextZIndex = maxZIndex + 1;
+        }
+        
         this._redrawBase();
         this._redrawActive();
     }
@@ -2025,7 +2073,14 @@ class Whiteboard {
     importImages(imagesArray) {
         this.images.clear();
         this.imageCache.clear();
+        let maxZIndex = this.nextZIndex - 1;
+        
         imagesArray.forEach(image => {
+            // Ensure image has a zIndex
+            if (image.zIndex === undefined) {
+                image.zIndex = this.nextZIndex++;
+            }
+            maxZIndex = Math.max(maxZIndex, image.zIndex);
             this.images.set(image.id, image);
             
             // Load and cache the image
@@ -2036,6 +2091,11 @@ class Whiteboard {
             };
             img.src = image.data;
         });
+        
+        // Update nextZIndex to be higher than any imported image
+        if (maxZIndex >= this.nextZIndex) {
+            this.nextZIndex = maxZIndex + 1;
+        }
     }
 
     // =========================================================================

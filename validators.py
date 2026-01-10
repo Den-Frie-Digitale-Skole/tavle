@@ -302,12 +302,23 @@ def validate_stroke_complete_event(data: Dict) -> Tuple[bool, Dict, str]:
     if len(points) < 2:
         return False, {}, 'Stroke must have at least 2 points'
     
+    # Validate zIndex (optional, defaults to 0)
+    z_index = 0
+    if data.get('zIndex') is not None:
+        try:
+            z_index = float(data.get('zIndex', 0))
+            if z_index != z_index:  # NaN check
+                z_index = 0
+        except (TypeError, ValueError):
+            z_index = 0
+    
     return True, {
         'strokeId': stroke_id,
         'points': points,
         'color': validate_color(data.get('color')),
         'strokeWidth': validate_stroke_width(data.get('strokeWidth')),
-        'transform': validate_transform(data.get('transform'))
+        'transform': validate_transform(data.get('transform')),
+        'zIndex': z_index
     }, ''
 
 
@@ -369,6 +380,16 @@ def validate_image_add_event(data: Dict) -> Tuple[bool, Dict, str]:
     if not image_data:
         return False, {}, 'Invalid or missing image data (must be data URL, max 5MB)'
     
+    # Validate zIndex (optional, defaults to 0)
+    z_index = 0
+    if data.get('zIndex') is not None:
+        try:
+            z_index = float(data.get('zIndex', 0))
+            if z_index != z_index:  # NaN check
+                z_index = 0
+        except (TypeError, ValueError):
+            z_index = 0
+    
     return True, {
         'imageId': image_id,
         'data': image_data,
@@ -376,7 +397,8 @@ def validate_image_add_event(data: Dict) -> Tuple[bool, Dict, str]:
         'y': validate_coordinate(data.get('y', 0)),
         'width': validate_image_dimension(data.get('width', 200)),
         'height': validate_image_dimension(data.get('height', 200)),
-        'transform': validate_transform(data.get('transform'))
+        'transform': validate_transform(data.get('transform')),
+        'zIndex': z_index
     }, ''
 
 
