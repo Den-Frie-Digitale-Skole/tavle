@@ -88,7 +88,9 @@ class BoardResource(Resource):
     """
     
     method_decorators = [require_admin_token]
-    
+    name = 'Board'
+    desc = 'Manage individual whiteboard'
+
     def get(self, board_id):
         """Get board details with all strokes and images."""
         doc = get_document_or_404(board_id)
@@ -406,6 +408,7 @@ class ImageResource(Resource):
 # =============================================================================
 # Register all resources
 # =============================================================================
+
 
 # Board resources
 api.add_resource(BoardsResource, '/boards')

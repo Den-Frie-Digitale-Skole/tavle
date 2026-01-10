@@ -14,6 +14,7 @@ from models import init_db, get_document_by_token, open_db_connection, close_db_
 from api import api_bp
 from socketio_handlers import register_socketio_handlers
 from setup import needs_setup, complete_setup, get_admin_token, get_secret_key, get_or_create_admin_token, mark_setup_complete
+from docs import docs_bp
 
 # =============================================================================
 # Logging Setup
@@ -186,6 +187,40 @@ def teardown_request(exception=None):
     close_db_connection()
 
 # =============================================================================
+# Error Handlers
+# =============================================================================
+
+@app.errorhandler(400)
+def bad_request_error(error):
+    """Handle 400 Bad Request errors."""
+    return render_template('errors/400.html'), 400
+
+
+@app.errorhandler(403)
+def forbidden_error(error):
+    """Handle 403 Forbidden errors."""
+    return render_template('errors/403.html'), 403
+
+
+@app.errorhandler(404)
+def not_found_error(error):
+    """Handle 404 Not Found errors."""
+    return render_template('errors/404.html'), 404
+
+
+@app.errorhandler(429)
+def too_many_requests_error(error):
+    """Handle 429 Too Many Requests errors (rate limiting)."""
+    return render_template('errors/429.html'), 429
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 Internal Server errors."""
+    logger.error(f'Internal server error: {error}')
+    return render_template('errors/500.html'), 500
+
+# =============================================================================
 # Register API blueprint
 # =============================================================================
 
@@ -238,6 +273,13 @@ def index():
     return render_template('landing.html')
 
 
+@app.route('/docs')
+@limiter.limit("30 per minute")
+def api_docs():
+    """API Documentation page."""
+    return render_template('docs.html')
+
+
 @app.route('/board/<token>')
 @app.route('/b/<token>')
 @limiter.limit("30 per minute")
@@ -245,7 +287,7 @@ def board(token):
     """Render whiteboard for a specific document using access token."""
     doc = get_document_by_token(token)
     if not doc:
-        abort(404)
+        abort(403)
     return render_template('index.html', token_id=token, access_token=token)
 
 
@@ -280,6 +322,9 @@ def health_check():
         'database': 'postgresql' if pool_status else 'sqlite',
         'pool': pool_status,
     })
+
+
+app.register_blueprint(docs_bp)
 
 # =============================================================================
 # Application Entry Point

@@ -133,6 +133,39 @@ const translations = {
             copy: 'Copy',
             copied: 'Copied!',
         },
+
+        // Error pages
+        errors: {
+            // 400 Bad Request
+            badRequest: 'Bad Request',
+            badRequestDesc: 'The request could not be understood. Please check your input and try again.',
+            badRequestHint: 'Double-check the URL or form data you submitted.',
+            
+            // 403 Forbidden
+            forbidden: 'Access Denied',
+            forbiddenDesc: 'You don\'t have permission to access this resource.',
+            forbiddenHint: 'If you believe this is an error, please contact the administrator.',
+            
+            // 404 Not Found
+            notFound: 'Page Not Found',
+            notFoundDesc: 'The page you\'re looking for doesn\'t exist or has been moved.',
+            
+            // 429 Too Many Requests
+            tooManyRequests: 'Too Many Requests',
+            tooManyRequestsDesc: 'You\'ve made too many requests. Please wait a moment and try again.',
+            tooManyRequestsHint: 'Rate limiting helps protect our service. Please wait before retrying.',
+            
+            // 500 Server Error
+            serverError: 'Server Error',
+            serverErrorDesc: 'Something went wrong on our end. We\'re working to fix it.',
+            serverErrorHint: 'Try refreshing the page or come back later.',
+            
+            // Common actions
+            backHome: 'Back to Home',
+            goBack: 'Go Back',
+            refresh: 'Refresh Page',
+            tryAgain: 'Try Again',
+        },
     },
     
     da: {
@@ -263,6 +296,39 @@ const translations = {
             configSaved: 'Konfiguration gemt i',
             copy: 'Kopiér',
             copied: 'Kopieret!',
+        },
+
+        // Error pages
+        errors: {
+            // 400 Bad Request
+            badRequest: 'Ugyldig Anmodning',
+            badRequestDesc: 'Anmodningen kunne ikke forstås. Tjek venligst dine data og prøv igen.',
+            badRequestHint: 'Dobbelttjek URL\'en eller de data du har indsendt.',
+            
+            // 403 Forbidden
+            forbidden: 'Adgang Nægtet',
+            forbiddenDesc: 'Du har ikke tilladelse til at tilgå denne ressource.',
+            forbiddenHint: 'Hvis du mener dette er en fejl, kontakt venligst administratoren.',
+            
+            // 404 Not Found
+            notFound: 'Side Ikke Fundet',
+            notFoundDesc: 'Siden du leder efter findes ikke eller er blevet flyttet.',
+            
+            // 429 Too Many Requests
+            tooManyRequests: 'For Mange Anmodninger',
+            tooManyRequestsDesc: 'Du har lavet for mange anmodninger. Vent venligst et øjeblik og prøv igen.',
+            tooManyRequestsHint: 'Hastighedsbegrænsning hjælper med at beskytte vores service. Vent venligst før du prøver igen.',
+            
+            // 500 Server Error
+            serverError: 'Serverfejl',
+            serverErrorDesc: 'Noget gik galt på vores side. Vi arbejder på at løse det.',
+            serverErrorHint: 'Prøv at genindlæse siden eller kom tilbage senere.',
+            
+            // Common actions
+            backHome: 'Tilbage til Forsiden',
+            goBack: 'Gå Tilbage',
+            refresh: 'Genindlæs Side',
+            tryAgain: 'Prøv Igen',
         },
     },
 };
