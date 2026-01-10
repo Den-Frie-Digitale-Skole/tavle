@@ -41,62 +41,73 @@
         <canvas x-ref="baseCanvas" class="whiteboard-canvas whiteboard-canvas--base"></canvas>
         <canvas x-ref="activeCanvas" class="whiteboard-canvas whiteboard-canvas--active"></canvas>
 
-        <!-- Floating Tool Palette - Excalidraw Style -->
+        <!-- Floating Tool Palette - Swiss + Whiteboard Style -->
         <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50">
-            <div class="flex items-center gap-1 px-2 py-2 bg-white rounded-xl shadow-lg border border-gray-200/80">
+            <div class="flex items-center bg-white shadow-xl" style="border: 2px solid #1e1e1e; transform: rotate(-0.3deg);">
+                <!-- Red accent bar -->
+                <div class="w-1.5 h-12 bg-red-500 self-stretch"></div>
 
                 <!-- Tool Selection -->
-                <div class="flex items-center gap-0.5 px-1">
+                <div class="flex items-center gap-0.5 px-2 py-1.5">
                     <button @click="setMode('draw')"
-                        :class="mode === 'draw' ? 'bg-violet-100 text-violet-600' : 'hover:bg-gray-100 text-gray-600'"
-                        class="p-2.5 rounded-lg transition-all duration-150" title="Draw (D)">
+                        :class="mode === 'draw' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 transition-all duration-150" 
+                        :style="mode === 'draw' ? 'border: 2px solid #1e1e1e; transform: rotate(-2deg);' : 'border: 2px solid transparent;'"
+                        title="Draw (D)">
                         <i class="ph ph-pencil-simple text-xl"></i>
                     </button>
                     <button @click="setMode('erase')"
-                        :class="mode === 'erase' ? 'bg-violet-100 text-violet-600' : 'hover:bg-gray-100 text-gray-600'"
-                        class="p-2.5 rounded-lg transition-all duration-150" title="Eraser (E)">
+                        :class="mode === 'erase' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 transition-all duration-150"
+                        :style="mode === 'erase' ? 'border: 2px solid #1e1e1e; transform: rotate(1deg);' : 'border: 2px solid transparent;'"
+                        title="Eraser (E)">
                         <i class="ph ph-eraser text-xl"></i>
                     </button>
                     <button @click="setMode('select')"
-                        :class="mode === 'select' ? 'bg-violet-100 text-violet-600' : 'hover:bg-gray-100 text-gray-600'"
-                        class="p-2.5 rounded-lg transition-all duration-150" title="Select (V)">
+                        :class="mode === 'select' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 transition-all duration-150"
+                        :style="mode === 'select' ? 'border: 2px solid #1e1e1e; transform: rotate(-1deg);' : 'border: 2px solid transparent;'"
+                        title="Select (V)">
                         <i class="ph ph-cursor text-xl"></i>
                     </button>
                     <button @click="setMode('pan')"
-                        :class="mode === 'pan' ? 'bg-violet-100 text-violet-600' : 'hover:bg-gray-100 text-gray-600'"
-                        class="p-2.5 rounded-lg transition-all duration-150" title="Pan (H)">
+                        :class="mode === 'pan' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 transition-all duration-150"
+                        :style="mode === 'pan' ? 'border: 2px solid #1e1e1e; transform: rotate(2deg);' : 'border: 2px solid transparent;'"
+                        title="Pan (H)">
                         <i class="ph ph-hand text-xl"></i>
                     </button>
                 </div>
 
                 <!-- Divider -->
-                <div class="w-px h-8 bg-gray-200 mx-1"></div>
+                <div class="w-0.5 h-8 bg-gray-900 mx-1"></div>
 
                 <!-- Stroke Color -->
-                <div class="flex items-center gap-1 px-1">
+                <div class="flex items-center gap-1 px-2">
                     <div class="relative" x-data="{ open: false }">
                         <button @click="open = !open" 
-                            class="w-8 h-8 rounded-lg border-2 border-gray-200 hover:border-gray-300 transition-colors flex items-center justify-center"
-                            :style="{ backgroundColor: color }">
+                            class="w-8 h-8 border-2 border-gray-900 hover:scale-105 transition-transform flex items-center justify-center"
+                            :style="{ backgroundColor: color, transform: 'rotate(2deg)' }">
                         </button>
                         <!-- Color Dropdown -->
                         <div x-show="open" @click.outside="open = false" x-transition
-                            class="absolute top-full left-0 mt-2 p-4 bg-white rounded-xl shadow-xl border border-gray-200 z-50 min-w-[220px]">
-                            <p class="text-xs font-medium text-gray-500 mb-3">Stroke Color</p>
+                            class="absolute top-full left-0 mt-2 p-4 bg-white shadow-xl z-50 min-w-[220px]"
+                            style="border: 2px solid #1e1e1e; transform: rotate(-0.5deg);">
+                            <p class="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Stroke Color</p>
                             <div class="grid grid-cols-5 gap-2 mb-4">
                                 <template x-for="c in colorPalette" :key="c">
                                     <button @click="setColor(c); open = false" 
                                         :style="{ backgroundColor: c }"
-                                        :class="color === c ? 'ring-2 ring-violet-500 ring-offset-2' : ''"
-                                        class="w-9 h-9 rounded-lg border border-gray-200 hover:scale-110 transition-transform cursor-pointer">
+                                        :class="color === c ? 'ring-2 ring-gray-900 ring-offset-2' : ''"
+                                        class="w-9 h-9 border-2 border-gray-900 hover:scale-110 transition-transform cursor-pointer">
                                     </button>
                                 </template>
                             </div>
-                            <div class="pt-3 border-t border-gray-100">
+                            <div class="pt-3 border-t-2 border-gray-900">
                                 <label class="flex items-center gap-3 cursor-pointer">
-                                    <span class="text-xs text-gray-500">Custom:</span>
+                                    <span class="text-xs font-bold text-gray-900 uppercase">Custom:</span>
                                     <input type="color" x-model="color" @input="setColor($event.target.value)"
-                                        class="w-10 h-8 rounded cursor-pointer border border-gray-200">
+                                        class="w-10 h-8 cursor-pointer border-2 border-gray-900">
                                 </label>
                             </div>
                         </div>
@@ -104,14 +115,15 @@
                 </div>
 
                 <!-- Divider -->
-                <div class="w-px h-8 bg-gray-200 mx-1"></div>
+                <div class="w-0.5 h-8 bg-gray-900 mx-1"></div>
 
                 <!-- Stroke Width Presets -->
-                <div class="flex items-center gap-1 px-1">
+                <div class="flex items-center gap-1 px-2">
                     <template x-for="sw in strokeWidths" :key="sw.value">
                         <button @click="setStrokeWidth(sw.value)"
-                            :class="strokeWidth == sw.value ? 'bg-violet-100 text-violet-600' : 'hover:bg-gray-100 text-gray-500'"
-                            class="w-9 h-9 rounded-lg transition-all duration-150 flex items-center justify-center"
+                            :class="strokeWidth == sw.value ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 text-gray-700'"
+                            class="w-9 h-9 transition-all duration-150 flex items-center justify-center"
+                            :style="strokeWidth == sw.value ? 'border: 2px solid #1e1e1e;' : 'border: 2px solid transparent;'"
                             :title="sw.label">
                             <div class="rounded-full bg-current" :style="{ width: sw.size + 'px', height: sw.size + 'px' }"></div>
                         </button>
@@ -119,30 +131,33 @@
                 </div>
 
                 <!-- Divider -->
-                <div class="w-px h-8 bg-gray-200 mx-1"></div>
+                <div class="w-0.5 h-8 bg-gray-900 mx-1"></div>
 
                 <!-- Canvas Options -->
-                <div class="flex items-center gap-0.5 px-1">
+                <div class="flex items-center gap-0.5 px-2">
                     <!-- Background Color -->
                     <div class="relative" x-data="{ open: false }">
                         <button @click="open = !open" 
-                            :class="backgroundColor !== '#ffffff' ? 'bg-violet-100 text-violet-600' : 'hover:bg-gray-100 text-gray-600'"
-                            class="p-2.5 rounded-lg transition-all duration-150" title="Background Color">
+                            :class="backgroundColor !== '#ffffff' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                            class="p-2.5 transition-all duration-150"
+                            :style="backgroundColor !== '#ffffff' ? 'border: 2px solid #1e1e1e;' : 'border: 2px solid transparent;'"
+                            title="Background Color">
                             <i class="ph ph-paint-bucket text-xl"></i>
                         </button>
                         <!-- Background Color Dropdown -->
                         <div x-show="open" @click.outside="open = false" x-transition
-                            class="absolute top-full right-0 mt-2 p-3 bg-white rounded-xl shadow-xl border border-gray-200 z-50 min-w-[180px]">
-                            <p class="text-xs font-medium text-gray-500 mb-2">Background</p>
+                            class="absolute top-full right-0 mt-2 p-3 bg-white shadow-xl z-50 min-w-[180px]"
+                            style="border: 2px solid #1e1e1e; transform: rotate(0.5deg);">
+                            <p class="text-xs font-bold text-gray-900 uppercase tracking-wider mb-2">Background</p>
                             <div class="grid grid-cols-5 gap-1.5">
                                 <template x-for="bg in backgroundColors" :key="bg">
                                     <button @click="setBackgroundColor(bg); open = false" 
                                         :style="{ backgroundColor: bg }"
                                         :class="[
-                                            backgroundColor === bg ? 'ring-2 ring-violet-500 ring-offset-1' : '',
-                                            bg === '#ffffff' ? 'border border-gray-300' : ''
+                                            backgroundColor === bg ? 'ring-2 ring-gray-900 ring-offset-1' : '',
+                                            bg === '#ffffff' ? 'border-2 border-gray-900' : 'border-2 border-gray-900'
                                         ]"
-                                        class="w-7 h-7 rounded-lg hover:scale-110 transition-transform">
+                                        class="w-7 h-7 hover:scale-110 transition-transform">
                                     </button>
                                 </template>
                             </div>
@@ -150,108 +165,128 @@
                     </div>
                     <!-- Grid Toggle -->
                     <button @click="toggleGrid()"
-                        :class="showGrid ? 'bg-violet-100 text-violet-600' : 'hover:bg-gray-100 text-gray-600'"
-                        class="p-2.5 rounded-lg transition-all duration-150" title="Toggle Grid (G)">
+                        :class="showGrid ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 transition-all duration-150"
+                        :style="showGrid ? 'border: 2px solid #1e1e1e; transform: rotate(-1deg);' : 'border: 2px solid transparent;'"
+                        title="Toggle Grid (G)">
                         <i class="ph ph-grid-four text-xl"></i>
                     </button>
                 </div>
 
                 <!-- Divider -->
-                <div class="w-px h-8 bg-gray-200 mx-1"></div>
+                <div class="w-0.5 h-8 bg-gray-900 mx-1"></div>
 
                 <!-- Zoom Controls -->
-                <div class="flex items-center gap-0.5 px-1">
-                    <button @click="zoomOut()" class="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors">
+                <div class="flex items-center gap-0.5 px-2">
+                    <button @click="zoomOut()" class="p-2 hover:bg-gray-100 text-gray-700 transition-colors border-2 border-transparent hover:border-gray-300">
                         <i class="ph ph-minus text-lg"></i>
                     </button>
                     <button @click="resetZoom()" 
-                        class="px-2 py-1 rounded-lg hover:bg-gray-100 text-gray-600 text-xs font-medium min-w-[50px] transition-colors"
+                        class="px-2 py-1 hover:bg-gray-100 text-gray-900 text-xs font-bold min-w-[50px] transition-colors uppercase tracking-wide"
                         x-text="Math.round(zoom * 100) + '%'">
                     </button>
-                    <button @click="zoomIn()" class="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors">
+                    <button @click="zoomIn()" class="p-2 hover:bg-gray-100 text-gray-700 transition-colors border-2 border-transparent hover:border-gray-300">
                         <i class="ph ph-plus text-lg"></i>
                     </button>
                 </div>
 
                 <!-- Divider -->
-                <div class="w-px h-8 bg-gray-200 mx-1"></div>
+                <div class="w-0.5 h-8 bg-gray-900 mx-1"></div>
 
                 <!-- Actions -->
-                <div class="flex items-center gap-0.5 px-1">
+                <div class="flex items-center gap-0.5 px-2">
                     <input type="file" x-ref="imageInput" @change="uploadImage($event)" accept="image/*" class="hidden">
                     <button @click="$refs.imageInput.click()" 
-                        class="p-2.5 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors"
+                        class="p-2.5 hover:bg-gray-100 text-gray-600 transition-colors border-2 border-transparent hover:border-gray-300"
                         title="Add Image (Ctrl+V to paste)">
                         <i class="ph ph-image text-xl"></i>
                     </button>
                     <button @click="clearCanvas()" 
-                        class="p-2.5 rounded-lg hover:bg-red-50 text-gray-600 hover:text-red-500 transition-colors"
+                        class="p-2.5 hover:bg-red-500 text-gray-600 hover:text-white transition-colors border-2 border-transparent hover:border-gray-900"
                         title="Clear Canvas">
                         <i class="ph ph-trash text-xl"></i>
                     </button>
                 </div>
+
+                <!-- Blue accent bar -->
+                <div class="w-1.5 h-12 bg-blue-500 self-stretch"></div>
             </div>
         </div>
 
-        <!-- Connection Status -->
+        <!-- Connection Status - Swiss Style -->
         <div class="fixed bottom-4 left-4 z-50">
-            <div class="flex items-center gap-2 px-3 py-2 bg-white/90 backdrop-blur rounded-lg shadow-md border border-gray-200/80 text-sm"
+            <div class="flex items-center gap-2 px-3 py-2 bg-white shadow-lg text-sm"
+                style="border: 2px solid #1e1e1e; transform: rotate(-1deg);"
                 :class="connected ? 'text-emerald-600' : 'text-gray-400'">
-                <i :class="connected ? 'ph ph-wifi-high' : 'ph ph-wifi-slash'" class="text-lg"></i>
+                <div class="w-2.5 h-2.5" :class="connected ? 'bg-emerald-500' : 'bg-gray-400'"></div>
+                <span class="font-bold uppercase tracking-wider text-xs" x-text="connected ? 'Online' : 'Offline'"></span>
             </div>
         </div>
 
-        <!-- User Panel (bottom right) -->
+        <!-- User Panel (bottom right) - Swiss + Whiteboard Style -->
         <div class="fixed bottom-4 right-4 z-50" x-show="userName">
             <!-- Connected users panel -->
-            <div class="bg-white/95 backdrop-blur rounded-xl shadow-lg border border-gray-200/80 overflow-hidden min-w-[200px]">
+            <div class="bg-white shadow-xl overflow-hidden min-w-[220px]" style="border: 2px solid #1e1e1e; transform: rotate(0.5deg);">
                 <!-- Header with your name -->
-                <div class="px-3 py-2.5 bg-gray-50/80 border-b border-gray-200/80 flex items-center justify-between">
+                <div class="px-3 py-2.5 bg-yellow-400 border-b-2 border-gray-900 flex items-center justify-between">
                     <div class="flex items-center gap-2">
-                        <div class="w-2.5 h-2.5 rounded-full ring-2 ring-white shadow-sm" :style="{ backgroundColor: userColor }"></div>
-                        <span class="text-sm font-medium text-gray-700" x-text="userName"></span>
-                        <span class="text-xs text-gray-400">(you)</span>
+                        <div class="w-3 h-3 border-2 border-gray-900" :style="{ backgroundColor: userColor }"></div>
+                        <span class="text-sm font-bold text-gray-900 uppercase tracking-wide" x-text="userName"></span>
+                        <span class="text-xs text-gray-700 font-medium">(you)</span>
                         <button @click="editUserName()" 
-                            class="p-1 text-gray-400 hover:text-violet-500 transition-colors"
+                            class="p-1 text-gray-700 hover:text-gray-900 transition-colors"
                             title="Edit name">
                             <i class="ph ph-pencil-simple text-sm"></i>
                         </button>
                     </div>
                     <button @click="toggleUserPanel()" 
-                        class="text-gray-400 hover:text-gray-600 transition-colors">
+                        class="text-gray-900 hover:text-gray-700 transition-colors">
                         <i class="ph ph-caret-down text-lg transition-transform" :class="userPanelExpanded ? 'rotate-180' : ''"></i>
                     </button>
                 </div>
 
                 <!-- User list -->
-                <div x-show="userPanelExpanded" x-transition class="max-h-48 overflow-y-auto">
+                <div x-show="userPanelExpanded" x-transition class="max-h-48 overflow-y-auto bg-white">
                     <template x-if="remoteUsers.length === 0">
-                        <div class="px-3 py-3 text-sm text-gray-400 text-center">
+                        <div class="px-3 py-3 text-sm text-gray-500 text-center font-medium">
                             No other users online
                         </div>
                     </template>
                     <template x-for="user in remoteUsers" :key="user.oduserId">
-                        <div class="px-3 py-2 flex items-center justify-between hover:bg-gray-50/80 border-b border-gray-100 last:border-b-0">
+                        <div class="px-3 py-2 flex items-center justify-between hover:bg-gray-50 border-b-2 border-gray-200 last:border-b-0">
                             <div class="flex items-center gap-2">
-                                <div class="w-2.5 h-2.5 rounded-full" :style="{ backgroundColor: user.color }"></div>
-                                <span class="text-sm text-gray-600" x-text="user.name"></span>
+                                <div class="w-3 h-3 border-2 border-gray-900" :style="{ backgroundColor: user.color }"></div>
+                                <span class="text-sm text-gray-700 font-medium" x-text="user.name"></span>
                             </div>
                             <button @click="jumpToUser(user.oduserId)" 
-                                class="p-1 text-gray-400 hover:text-violet-500 transition-colors"
+                                class="p-1 text-gray-500 hover:text-red-500 transition-colors"
                                 title="Jump to user's location">
                                 <i class="ph ph-map-pin text-base"></i>
                             </button>
                         </div>
                     </template>
                 </div>
+
+                <!-- Bottom accent -->
+                <div class="flex">
+                    <div class="flex-1 h-1 bg-red-500"></div>
+                    <div class="flex-1 h-1 bg-blue-500"></div>
+                    <div class="flex-1 h-1 bg-gray-900"></div>
+                </div>
             </div>
         </div>
 
-        <!-- Loading Overlay -->
-        <div x-show="loading && userName" x-transition class="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50">
-            <div class="text-center">
-                <i class="ph ph-circle-notch text-4xl text-violet-500 animate-spin"></i>
-                <p class="mt-4 text-gray-600">Loading whiteboard...</p>
+        <!-- Loading Overlay - Swiss Style -->
+        <div x-show="loading && userName" x-transition class="absolute inset-0 flex items-center justify-center z-50" style="background: #f5f5f0;">
+            <div class="text-center bg-white p-8 shadow-xl" style="border: 3px solid #1e1e1e; transform: rotate(-0.5deg);">
+                <div class="h-1.5 bg-red-500 -mt-8 -mx-8 mb-6"></div>
+                <div class="w-12 h-12 border-4 border-gray-200 border-t-gray-900 animate-spin mx-auto"></div>
+                <p class="mt-4 text-gray-900 font-bold uppercase tracking-wider text-sm">Loading whiteboard...</p>
+                <div class="flex -mx-8 -mb-8 mt-6">
+                    <div class="flex-1 h-1.5 bg-blue-500"></div>
+                    <div class="flex-1 h-1.5 bg-yellow-400"></div>
+                    <div class="flex-1 h-1.5 bg-gray-900"></div>
+                </div>
             </div>
         </div>
 
