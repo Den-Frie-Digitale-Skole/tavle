@@ -80,6 +80,20 @@ const translations = {
             nameRequired: 'Please enter a name',
         },
         
+        // Suggested rare animal names
+        animalNames: {
+            axolotl: 'Axolotl',
+            quokka: 'Quokka',
+            pangolin: 'Pangolin',
+            okapi: 'Okapi',
+            narwhal: 'Narwhal',
+            kakapo: 'Kakapo',
+            fossa: 'Fossa',
+            dugong: 'Dugong',
+            saola: 'Saola',
+            tarsier: 'Tarsier',
+        },
+        
         // Loading
         loading: {
             text: 'Loading whiteboard...',
@@ -243,6 +257,20 @@ const translations = {
             suggestions: 'Eller vælg et sjovt navn',
             join: 'Deltag',
             nameRequired: 'Indtast venligst et navn',
+        },
+        
+        // Suggested rare animal names
+        animalNames: {
+            axolotl: 'Axolotl',
+            quokka: 'Quokka',
+            pangolin: 'Skældyr',
+            okapi: 'Okapi',
+            narwhal: 'Narhval',
+            kakapo: 'Kakapo',
+            fossa: 'Fossa',
+            dugong: 'Dugong',
+            saola: 'Saola',
+            tarsier: 'Spøgelsesabe',
         },
         
         // Loading

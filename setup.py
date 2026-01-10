@@ -149,11 +149,15 @@ def get_admin_token() -> str:
 def get_secret_key() -> str:
     """
     Get the Flask secret key.
-    Priority: Environment variable > Database > Dev default
+    Priority: Environment variable > Database > Auto-generate
+    
+    The secret key is automatically generated on first run and stored
+    in the database, so users don't need to configure it manually.
+    Environment variable override is available for multi-instance deployments.
     """
-    # 1. Check environment variable first (production override)
+    # 1. Check environment variable first (for multi-instance deployments)
     env_key = os.environ.get('SECRET_KEY')
-    if env_key and env_key != 'dev-secret-key-change-in-production':
+    if env_key:
         return env_key
     
     # 2. Check database
@@ -161,8 +165,16 @@ def get_secret_key() -> str:
     if db_key:
         return db_key
     
-    # 3. Return dev default
-    return 'dev-secret-key-change-in-production'
+    # 3. Auto-generate and save to database (first run)
+    new_key = generate_secret_key()
+    if save_db_config(SETTING_SECRET_KEY, new_key):
+        logger.info("Generated and saved new secret key to database")
+        return new_key
+    
+    # 4. Fallback: generate but don't persist (database not ready)
+    # This is safe as Flask will still work, just sessions won't persist across restarts
+    logger.warning("Could not save secret key to database - using ephemeral key")
+    return new_key
 
 
 def needs_setup() -> bool:

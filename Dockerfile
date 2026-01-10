@@ -7,7 +7,7 @@
 # -----------------------------------------------------------------------------
 # Stage 1: Build dependencies
 # -----------------------------------------------------------------------------
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
@@ -30,7 +30,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # -----------------------------------------------------------------------------
 # Stage 2: Production image
 # -----------------------------------------------------------------------------
-FROM python:3.11-slim as production
+FROM python:3.11-slim AS production
 
 # Security: Create non-root user
 RUN groupadd -r appgroup && \

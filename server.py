@@ -101,17 +101,8 @@ def check_production_config():
         os.environ.get('ENVIRONMENT') == 'production'
     )
     
-    if is_production:
-        secret_key = os.environ.get('SECRET_KEY', '')
-        if not secret_key or secret_key == 'dev-secret-key-change-in-production':
-            raise RuntimeError("SECRET_KEY must be set to a secure value in production!")
-        
-        admin_token = os.environ.get('ADMIN_API_TOKEN', '')
-        if not admin_token or admin_token == 'dev-admin-token-change-in-production':
-            raise RuntimeError("ADMIN_API_TOKEN must be set to a secure value in production!")
-        
-        if app.debug:
-            logger.warning("Debug mode is enabled - should be disabled in production!")
+    if is_production and app.debug:
+        logger.warning("Debug mode is enabled - should be disabled in production!")
 
 # =============================================================================
 # Initialize rate limiter (HTTP routes)
@@ -331,12 +322,17 @@ app.register_blueprint(docs_bp)
 # Application Entry Point
 # =============================================================================
 
+# Check production configuration
+# Must be run before starting the app
+# Both in development and production to catch misconfigurations early
+# Production uses gunicorn with eventlet, so this script is still run
+check_production_config()
+
+# Initialize database
+init_db()
+
+
 if __name__ == '__main__':
-    # Check production configuration
-    check_production_config()
-    
-    # Initialize database
-    init_db()
     
     # Log startup
     logger.info('Starting whiteboard server on http://localhost:5050')

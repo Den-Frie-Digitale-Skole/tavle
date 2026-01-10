@@ -19,8 +19,8 @@ This guide covers deploying the whiteboard application to production with Docker
 
 Before deploying, ensure you have:
 
-- [ ] Generated secure `SECRET_KEY` (64 characters)
-- [ ] Generated secure `ADMIN_API_TOKEN` (32 characters)
+- [x] `SECRET_KEY` - **Auto-generated** and stored in database on first run
+- [ ] Generated secure `ADMIN_API_TOKEN` (or use web setup wizard)
 - [ ] Generated secure `POSTGRES_PASSWORD`
 - [ ] Configured `ALLOWED_ORIGINS` with your domain(s)
 - [ ] Set up SSL termination (Nginx, Traefik, Caddy, or cloud LB)
@@ -49,11 +49,13 @@ docker compose logs -f app
 
 ### Step 1: Generate Secrets
 
+The `SECRET_KEY` is **automatically generated** on first run and stored securely in the database. You only need to generate it manually if running multiple app instances that need to share sessions.
+
 ```bash
-# Generate SECRET_KEY (64 hex characters)
+# (Optional) Generate SECRET_KEY for multi-instance deployments
 python3 -c "import secrets; print(secrets.token_hex(32))"
 
-# Generate ADMIN_API_TOKEN (URL-safe)
+# Generate ADMIN_API_TOKEN (or use web setup wizard at /setup)
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 
 # Generate POSTGRES_PASSWORD
@@ -72,7 +74,8 @@ nano .env
 
 ```bash
 # .env
-SECRET_KEY=<your-64-char-hex-key>
+# SECRET_KEY is auto-generated - only set for multi-instance deployments:
+# SECRET_KEY=<your-64-char-hex-key>
 ADMIN_API_TOKEN=<your-admin-token>
 POSTGRES_PASSWORD=<your-db-password>
 FLASK_ENV=production
@@ -414,7 +417,7 @@ ufw deny 5432/tcp   # Block direct database access
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `SECRET_KEY` | Yes* | dev key | Flask session secret |
+| `SECRET_KEY` | No | Auto-generated | Flask session secret (auto-generated and stored in DB) |
 | `ADMIN_API_TOKEN` | Yes* | dev token | Admin API authentication |
 | `FLASK_ENV` | No | development | Set to `production` for prod |
 | `DATABASE_URL` | No | SQLite | PostgreSQL connection URL |
@@ -423,7 +426,7 @@ ufw deny 5432/tcp   # Block direct database access
 | `DB_MAX_CONNECTIONS` | No | 32 | Connection pool size |
 | `LOG_LEVEL` | No | INFO | Logging verbosity |
 
-*Required when `FLASK_ENV=production`
+*Required when `FLASK_ENV=production` (or complete setup via web UI)
 
 ---
 

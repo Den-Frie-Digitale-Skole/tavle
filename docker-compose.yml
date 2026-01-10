@@ -2,7 +2,6 @@
 # Collaborative Whiteboard - Docker Compose Configuration
 # =============================================================================
 # Usage:
-#   Development:  docker compose up
 #   Production:   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 # =============================================================================
 
@@ -19,15 +18,15 @@ services:
     ports:
       - "${PORT:-5050}:5050"
     environment:
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
-      - ADMIN_API_TOKEN=${ADMIN_API_TOKEN:-dev-admin-token-change-in-production}
-      - FLASK_ENV=${FLASK_ENV:-development}
+      - FLASK_ENV=${FLASK_ENV:-production}
       - DATABASE_URL=postgresql://whiteboard:${POSTGRES_PASSWORD:-whiteboard}@db:5432/whiteboard
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
       - DB_MAX_CONNECTIONS=${DB_MAX_CONNECTIONS:-32}
       - DB_STALE_TIMEOUT=${DB_STALE_TIMEOUT:-300}
       - DB_TIMEOUT=${DB_TIMEOUT:-30}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # SECRET_KEY is auto-generated and stored in database on first run.
+      # Only set this if you need a consistent key across multiple instances.
+      # - SECRET_KEY=${SECRET_KEY}
     volumes:
       - app-logs:/app/logs
     depends_on:

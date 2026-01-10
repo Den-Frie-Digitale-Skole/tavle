@@ -26,6 +26,10 @@ class SyncManager {
         this.pendingCursor = null;
         this.cursorThrottleTimer = null;
 
+        // Rejoin debounce (avoid spamming rejoin on multiple auth errors)
+        this.lastRejoinTime = 0;
+        this.rejoinDebounceMs = 2000;  // Minimum 2 seconds between rejoin attempts
+
         // Server URL
         this.serverUrl = options.serverUrl || window.location.origin;
 
@@ -58,19 +62,32 @@ class SyncManager {
         return new Promise((resolve, reject) => {
             try {
                 this.socket = io(this.serverUrl, {
-                    transports: ['websocket', 'polling']
+                    transports: ['websocket', 'polling'],
+                    reconnection: true,
+                    reconnectionAttempts: Infinity,
+                    reconnectionDelay: 1000,
+                    reconnectionDelayMax: 5000
                 });
+
+                // Track if this is the initial connection
+                let initialConnect = true;
 
                 this.socket.on('connect', () => {
                     console.log('Socket connected');
                     this.connected = true;
                     this._notifyConnectionChange();
                     this.joinRoom();
-                    resolve();
+                    
+                    if (initialConnect) {
+                        initialConnect = false;
+                        resolve();
+                    } else {
+                        console.log('Socket reconnected - rejoined room automatically');
+                    }
                 });
 
-                this.socket.on('disconnect', () => {
-                    console.log('Socket disconnected');
+                this.socket.on('disconnect', (reason) => {
+                    console.log('Socket disconnected:', reason);
                     this.connected = false;
                     this._notifyConnectionChange();
                 });
@@ -79,7 +96,23 @@ class SyncManager {
                     console.error('Socket connection error:', error);
                     this.connected = false;
                     this._notifyConnectionChange();
-                    reject(error);
+                    if (initialConnect) {
+                        reject(error);
+                    }
+                });
+
+                // Handle authentication errors - rejoin room (with debounce)
+                this.socket.on('error', (error) => {
+                    console.warn('Socket error:', error);
+                    if (error.code === 'AUTH_REQUIRED' || 
+                        (error.message && error.message.includes('Not authenticated'))) {
+                        const now = Date.now();
+                        if (now - this.lastRejoinTime >= this.rejoinDebounceMs) {
+                            console.log('Session expired - rejoining room...');
+                            this.lastRejoinTime = now;
+                            this.joinRoom();
+                        }
+                    }
                 });
 
                 // Bind inbound event handlers

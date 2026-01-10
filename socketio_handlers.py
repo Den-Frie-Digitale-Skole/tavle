@@ -120,11 +120,19 @@ def require_session(func):
     def wrapper(*args, **kwargs):
         token = get_session_token()
         if not token:
-            security_logger.warning(
-                f"Unauthenticated access attempt: sid={request.sid}, "
-                f"event={func.__name__}, ip={request.remote_addr}"
-            )
-            emit('error', {'message': 'Not authenticated. Please rejoin the room.'})
+            # Log at DEBUG level for high-frequency events to reduce noise
+            high_freq_events = {'handle_cursor_move', 'handle_stroke_point'}
+            if func.__name__ in high_freq_events:
+                logger.debug(
+                    f"Unauthenticated access attempt: sid={request.sid}, "
+                    f"event={func.__name__}, ip={request.remote_addr}"
+                )
+            else:
+                security_logger.warning(
+                    f"Unauthenticated access attempt: sid={request.sid}, "
+                    f"event={func.__name__}, ip={request.remote_addr}"
+                )
+            emit('error', {'message': 'Not authenticated. Please rejoin the room.', 'code': 'AUTH_REQUIRED'})
             return
         return func(*args, **kwargs)
     wrapper.__name__ = func.__name__

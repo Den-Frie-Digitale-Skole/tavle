@@ -470,11 +470,16 @@
                 remoteUsers: [],
                 userPanelExpanded: true,
 
-                // Suggested rare animal names
-                suggestedNames: [
-                    'Axolotl', 'Quokka', 'Pangolin', 'Okapi', 'Narwhal',
-                    'Kakapo', 'Fossa', 'Dugong', 'Saola', 'Tarsier'
+                // Suggested rare animal names (translation keys)
+                suggestedNameKeys: [
+                    'axolotl', 'quokka', 'pangolin', 'okapi', 'narwhal',
+                    'kakapo', 'fossa', 'dugong', 'saola', 'tarsier'
                 ],
+
+                // Get translated animal names
+                get suggestedNames() {
+                    return this.suggestedNameKeys.map(key => this.t(`animalNames.${key}`));
+                },
 
                 // Extended color palette (Excalidraw-style)
                 colorPalette: [
