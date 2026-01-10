@@ -33,11 +33,13 @@ class Whiteboard {
         this.maxZoom = 5;
 
         // Interaction mode
-        this.mode = 'draw';  // 'draw' | 'select' | 'pan'
+        this.mode = 'draw';  // 'draw' | 'select' | 'pan' | 'erase'
         this.isDrawing = false;
         this.isPanning = false;
         this.isMoving = false;
         this.isResizing = false;
+        this.isErasing = false;
+        this.eraserWidth = 20;  // Eraser radius
         this.resizeHandle = null;  // 'nw' | 'ne' | 'sw' | 'se' | null
         this.resizeImageId = null;
         this.resizeStartBounds = null;
@@ -325,6 +327,13 @@ class Whiteboard {
             return;
         }
 
+        // Eraser mode
+        if (this.mode === 'erase') {
+            this.isErasing = true;
+            this._eraseAtPoint(point);
+            return;
+        }
+
         // Start drawing
         this.isDrawing = true;
         this.currentStrokeId = this._generateId();
@@ -355,6 +364,18 @@ class Whiteboard {
         // Broadcast cursor position (throttled)
         if (this.onCursorMove) {
             this.onCursorMove({ x: point.x, y: point.y });
+        }
+
+        // Draw eraser cursor
+        if (this.mode === 'erase') {
+            this._redrawActive();
+            this._drawEraserCursor(point);
+        }
+
+        // Handle erasing
+        if (this.isErasing) {
+            this._eraseAtPoint(point);
+            return;
         }
 
         if (this.isPanning) {
@@ -519,6 +540,12 @@ class Whiteboard {
         if (this.isPanning) {
             this.isPanning = false;
             this._updateCursor();
+            return;
+        }
+
+        // Handle eraser release
+        if (this.isErasing) {
+            this.isErasing = false;
             return;
         }
 
@@ -790,6 +817,122 @@ class Whiteboard {
             x: x * this.zoom + this.pan.x,
             y: y * this.zoom + this.pan.y
         };
+    }
+
+    // =========================================================================
+    // Eraser
+    // =========================================================================
+
+    _eraseAtPoint(point) {
+        const eraserRadius = this.eraserWidth / this.zoom;
+        const strokesToDelete = [];
+
+        // Find strokes that intersect with the eraser
+        this.strokes.forEach((stroke, strokeId) => {
+            if (this._strokeIntersectsEraser(stroke, point, eraserRadius)) {
+                strokesToDelete.push(strokeId);
+            }
+        });
+
+        // Delete intersecting strokes
+        if (strokesToDelete.length > 0) {
+            // Add to history
+            const deletedStrokes = strokesToDelete.map(id => {
+                const stroke = this.strokes.get(id);
+                return { ...stroke };
+            });
+            
+            this._addToHistory({
+                type: 'erase',
+                strokes: deletedStrokes
+            });
+
+            // Delete and notify
+            strokesToDelete.forEach(strokeId => {
+                this.strokes.delete(strokeId);
+                if (this.onStrokeDelete) {
+                    this.onStrokeDelete({ strokeId });
+                }
+            });
+
+            this._redrawBase();
+            this._redrawActive();
+        }
+    }
+
+    _strokeIntersectsEraser(stroke, eraserPoint, eraserRadius) {
+        if (!stroke.points || stroke.points.length === 0) return false;
+
+        const transform = stroke.transform || { x: 0, y: 0, scale: 1 };
+
+        // Check if any point in the stroke is within the eraser radius
+        for (const p of stroke.points) {
+            const px = p.x + transform.x;
+            const py = p.y + transform.y;
+            const dx = px - eraserPoint.x;
+            const dy = py - eraserPoint.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            // Account for stroke width
+            const strokeRadius = (stroke.strokeWidth / 2) * (transform.scale || 1);
+            if (distance <= eraserRadius + strokeRadius) {
+                return true;
+            }
+        }
+
+        // Also check line segments between points
+        for (let i = 0; i < stroke.points.length - 1; i++) {
+            const p1 = stroke.points[i];
+            const p2 = stroke.points[i + 1];
+            const x1 = p1.x + transform.x;
+            const y1 = p1.y + transform.y;
+            const x2 = p2.x + transform.x;
+            const y2 = p2.y + transform.y;
+
+            const dist = this._pointToSegmentDistance(eraserPoint.x, eraserPoint.y, x1, y1, x2, y2);
+            const strokeRadius = (stroke.strokeWidth / 2) * (transform.scale || 1);
+            if (dist <= eraserRadius + strokeRadius) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    _pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const lengthSq = dx * dx + dy * dy;
+
+        if (lengthSq === 0) {
+            // Segment is a point
+            return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+        }
+
+        // Project point onto line segment
+        let t = ((px - x1) * dx + (py - y1) * dy) / lengthSq;
+        t = Math.max(0, Math.min(1, t));
+
+        const closestX = x1 + t * dx;
+        const closestY = y1 + t * dy;
+
+        return Math.sqrt((px - closestX) ** 2 + (py - closestY) ** 2);
+    }
+
+    _drawEraserCursor(point) {
+        const ctx = this.activeCtx;
+        const screenX = point.x * this.zoom + this.pan.x;
+        const screenY = point.y * this.zoom + this.pan.y;
+
+        ctx.save();
+        ctx.strokeStyle = '#666666';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, this.eraserWidth, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
     }
 
     // =========================================================================
@@ -1394,6 +1537,10 @@ class Whiteboard {
         this.strokeWidth = width;
     }
 
+    setEraserWidth(width) {
+        this.eraserWidth = width;
+    }
+
     _updateCursor() {
         switch (this.mode) {
             case 'draw':
@@ -1404,6 +1551,9 @@ class Whiteboard {
                 break;
             case 'pan':
                 this.activeCanvas.style.cursor = this.isPanning ? 'grabbing' : 'grab';
+                break;
+            case 'erase':
+                this.activeCanvas.style.cursor = 'none';  // We'll draw a custom cursor
                 break;
         }
     }
