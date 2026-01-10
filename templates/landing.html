@@ -2,6 +2,11 @@
 
 {% block title %}Whiteboard{% endblock %}
 
+{% block head %}
+    <!-- Alpine.js (local) -->
+    <script defer src="/static/js/vendor/alpine.min.js"></script>
+{% endblock %}
+
 {% block body_attrs %}class="min-h-screen flex items-center justify-center p-4" style="background: #f5f5f0;"{% endblock %}
 
 {% block body %}
@@ -16,7 +21,9 @@
         </svg>
     </div>
 
-    <div class="max-w-md w-full relative">
+    <div class="max-w-md w-full relative" x-data="{ 
+        t(key) { return i18n.t(key); }
+    }" x-init="document.title = t('appName')">
         <div class="bg-white shadow-2xl" style="border: 3px solid #1e1e1e; transform: rotate(-0.5deg);">
             <!-- Top accent bar -->
             <div class="h-2 bg-red-500"></div>
@@ -31,13 +38,11 @@
                         </svg>
                     </div>
                     <div>
-                        <h1 class="text-2xl font-black text-gray-900 tracking-tight leading-tight">Collaborative<br>Whiteboard</h1>
+                        <h1 class="text-2xl font-black text-gray-900 tracking-tight leading-tight" x-html="t('landing.title').replace(' ', '<br>')"></h1>
                     </div>
                 </div>
 
-                <p class="text-gray-600 text-sm uppercase tracking-widest font-medium mb-8">
-                    Real-time collaboration for teams
-                </p>
+                <p class="text-gray-600 text-sm uppercase tracking-widest font-medium mb-8" x-text="t('landing.subtitle')"></p>
 
                 <!-- Info Cards -->
                 <div class="space-y-3 mb-8">
@@ -48,8 +53,8 @@
                             </svg>
                         </div>
                         <div>
-                            <h3 class="font-bold text-gray-900 text-sm uppercase tracking-wide">Real-time Collaboration</h3>
-                            <p class="text-xs text-gray-500">See everyone's cursors and strokes live</p>
+                            <h3 class="font-bold text-gray-900 text-sm uppercase tracking-wide" x-text="t('landing.feature1Title')"></h3>
+                            <p class="text-xs text-gray-500" x-text="t('landing.feature1Desc')"></p>
                         </div>
                     </div>
                     
@@ -61,8 +66,8 @@
                             </svg>
                         </div>
                         <div>
-                            <h3 class="font-bold text-gray-900 text-sm uppercase tracking-wide">Image Support</h3>
-                            <p class="text-xs text-gray-500">Paste or upload images directly</p>
+                            <h3 class="font-bold text-gray-900 text-sm uppercase tracking-wide" x-text="t('landing.feature2Title')"></h3>
+                            <p class="text-xs text-gray-500" x-text="t('landing.feature2Desc')"></p>
                         </div>
                     </div>
                     
@@ -74,20 +79,16 @@
                             </svg>
                         </div>
                         <div>
-                            <h3 class="font-bold text-gray-900 text-sm uppercase tracking-wide">Private Boards</h3>
-                            <p class="text-xs text-gray-500">Secure access with unique tokens</p>
+                            <h3 class="font-bold text-gray-900 text-sm uppercase tracking-wide" x-text="t('landing.feature3Title')"></h3>
+                            <p class="text-xs text-gray-500" x-text="t('landing.feature3Desc')"></p>
                         </div>
                     </div>
                 </div>
 
                 <!-- CTA -->
                 <div class="border-2 border-gray-900 p-4" style="background: #fef9c3; transform: rotate(-0.3deg);">
-                    <p class="text-sm text-gray-900 font-bold uppercase tracking-wide mb-1">
-                        Need a board?
-                    </p>
-                    <p class="text-xs text-gray-700">
-                        Contact your administrator to create one.
-                    </p>
+                    <p class="text-sm text-gray-900 font-bold uppercase tracking-wide mb-1" x-text="t('landing.needBoard')"></p>
+                    <p class="text-xs text-gray-700" x-text="t('landing.contactAdmin')"></p>
                 </div>
             </div>
 
@@ -100,8 +101,6 @@
         </div>
 
         <!-- Footer -->
-        <p class="text-center text-xs text-gray-500 mt-6 font-medium">
-            Built with Flask, Socket.IO, and ❤️
-        </p>
+        <p class="text-center text-xs text-gray-500 mt-6 font-medium" x-text="t('landing.footer')"></p>
     </div>
 {% endblock %}

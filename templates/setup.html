@@ -2,6 +2,11 @@
 
 {% block title %}Setup - Collaborative Whiteboard{% endblock %}
 
+{% block head %}
+    <!-- Alpine.js (local) -->
+    <script defer src="/static/js/vendor/alpine.min.js"></script>
+{% endblock %}
+
 {% block body_attrs %}class="min-h-screen flex items-center justify-center p-4" style="background: #f5f5f0;"{% endblock %}
 
 {% block body %}
@@ -16,7 +21,9 @@
         </svg>
     </div>
 
-    <div class="max-w-lg w-full relative">
+    <div class="max-w-lg w-full relative" x-data="{ 
+        t(key) { return i18n.t(key); }
+    }" x-init="document.title = t('setup.title') + ' - ' + t('appName')">
         <div class="bg-white shadow-2xl" style="border: 3px solid #1e1e1e; transform: rotate(0.3deg);">
             <!-- Top accent bar -->
             <div class="h-2 bg-emerald-500"></div>
@@ -33,8 +40,8 @@
                         </svg>
                     </div>
                     <div>
-                        <h1 class="text-2xl font-black text-gray-900 tracking-tight leading-tight">Welcome to<br>Whiteboard</h1>
-                        <p class="text-gray-600 text-sm uppercase tracking-widest font-medium mt-1">First-time setup</p>
+                        <h1 class="text-2xl font-black text-gray-900 tracking-tight leading-tight" x-html="t('setup.title').replace(' ', '<br>')"></h1>
+                        <p class="text-gray-600 text-sm uppercase tracking-widest font-medium mt-1" x-text="t('setup.subtitle')"></p>
                     </div>
                 </div>
 
@@ -45,11 +52,9 @@
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                         </svg>
-                        <span class="font-black uppercase tracking-wide">Setup Complete!</span>
+                        <span class="font-black uppercase tracking-wide" x-text="t('setup.setupComplete')"></span>
                     </div>
-                    <p class="text-sm text-emerald-700">
-                        Your whiteboard server is now configured and ready to use.
-                    </p>
+                    <p class="text-sm text-emerald-700" x-text="t('setup.setupCompleteDesc')"></p>
                 </div>
                 {% endif %}
 
@@ -60,19 +65,17 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                         </svg>
-                        Admin API Token
+                        <span x-text="t('setup.adminToken')"></span>
                     </label>
                     <div class="relative">
                         <input type="text" id="apiToken" value="{{ admin_token }}" readonly
                             class="w-full px-4 py-3 bg-gray-50 border-2 border-gray-900 font-mono text-sm pr-24">
                         <button onclick="copyToken()" id="copyBtn"
-                            class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-gray-900 text-white font-bold uppercase text-xs tracking-wide transition-colors hover:bg-gray-700">
-                            Copy
+                            class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-gray-900 text-white font-bold uppercase text-xs tracking-wide transition-colors hover:bg-gray-700"
+                            x-text="t('setup.copy')">
                         </button>
                     </div>
-                    <p class="text-xs text-gray-500 mt-2">
-                        Save this token securely. You'll need it to create boards and manage the API.
-                    </p>
+                    <p class="text-xs text-gray-500 mt-2" x-text="t('setup.tokenHint')"></p>
                 </div>
 
                 <!-- Warning Box -->
@@ -83,12 +86,11 @@
                                 d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                         </svg>
                         <div>
-                            <h3 class="font-black text-gray-900 text-sm uppercase tracking-wide">Security Notice</h3>
+                            <h3 class="font-black text-gray-900 text-sm uppercase tracking-wide" x-text="t('setup.securityNotice')"></h3>
                             <ul class="text-xs text-gray-700 mt-1 space-y-1">
-                                <li>• This token grants full admin access</li>
-                                <li>• Store it in a password manager</li>
-                                <li>• This screen will only appear once</li>
-                                <li>• Saved in <code class="bg-yellow-200 px-1 font-mono">.whiteboard_setup.json</code></li>
+                                <li x-text="'• ' + t('setup.securityPoint1')"></li>
+                                <li x-text="'• ' + t('setup.securityPoint2')"></li>
+                                <li x-text="'• ' + t('setup.securityPoint3')"></li>
                             </ul>
                         </div>
                     </div>
@@ -96,9 +98,7 @@
 
                 <!-- Usage Example -->
                 <div class="mb-6">
-                    <label class="block text-xs font-bold text-gray-900 uppercase tracking-wider mb-2">
-                        Quick Start: Create a Board
-                    </label>
+                    <label class="block text-xs font-bold text-gray-900 uppercase tracking-wider mb-2" x-text="t('setup.quickStart')"></label>
                     <div class="bg-gray-900 p-4 overflow-x-auto border-2 border-gray-900">
                         <pre class="text-sm text-gray-300"><code><span class="text-emerald-400">curl</span> -X POST {{ request.host_url }}api/boards \
   -H <span class="text-yellow-300">"Authorization: Bearer {{ admin_token }}"</span> \
@@ -110,13 +110,13 @@
                 <!-- Continue Button -->
                 <a href="/" 
                     class="block w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-center transition-colors uppercase tracking-wider"
-                    style="border: 3px solid #1e1e1e; transform: rotate(-0.3deg);">
-                    Continue to Whiteboard →
+                    style="border: 3px solid #1e1e1e; transform: rotate(-0.3deg);"
+                    x-text="t('setup.continueBtn')">
                 </a>
 
                 <!-- CLI Hint -->
                 <p class="text-center text-xs text-gray-600 mt-4 font-medium">
-                    Or use CLI: <code class="bg-gray-100 px-2 py-1 font-mono border border-gray-300">python cli.py create "Board Name"</code>
+                    <span x-text="t('setup.cliHint')"></span> <code class="bg-gray-100 px-2 py-1 font-mono border border-gray-300">python cli.py create "Board Name"</code>
                 </p>
             </div>
 
@@ -128,10 +128,12 @@
             </div>
         </div>
 
-        <!-- Footer -->
-        <p class="text-center text-xs text-gray-500 mt-6 font-medium">
-            Configuration saved to <code class="bg-white px-2 py-0.5 border border-gray-300 font-mono">.whiteboard_setup.json</code>
-        </p>
+        <!-- Footer with language selector -->
+        <div class="flex items-center justify-between mt-6">
+            <p class="text-xs text-gray-500 font-medium">
+                <span x-text="t('setup.configSaved')"></span> <code class="bg-white px-2 py-0.5 border border-gray-300 font-mono">.whiteboard_setup.json</code>
+            </p>
+        </div>
     </div>
 {% endblock %}
 
@@ -142,12 +144,12 @@
             const copyBtn = document.getElementById('copyBtn');
             
             navigator.clipboard.writeText(tokenInput.value).then(() => {
-                copyBtn.textContent = 'Copied!';
+                copyBtn.textContent = i18n.t('setup.copied');
                 copyBtn.classList.remove('bg-gray-900', 'hover:bg-gray-700');
                 copyBtn.classList.add('bg-emerald-500');
                 
                 setTimeout(() => {
-                    copyBtn.textContent = 'Copy';
+                    copyBtn.textContent = i18n.t('setup.copy');
                     copyBtn.classList.add('bg-gray-900', 'hover:bg-gray-700');
                     copyBtn.classList.remove('bg-emerald-500');
                 }, 2000);
