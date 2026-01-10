@@ -14,9 +14,9 @@ MAX_COORDINATE = 100000
 MIN_COORDINATE = -100000
 MAX_STROKE_WIDTH = 100
 MIN_STROKE_WIDTH = 0.5
-MAX_IMAGE_DATA_SIZE = 100 * 1024 * 1024  # 100MB base64
+MAX_IMAGE_DATA_SIZE = 20 * 1024 * 1024  # 20MB base64 (approx 15MB image file)
 MAX_STROKES_PER_BOARD = 10000
-MAX_IMAGES_PER_BOARD = 100
+MAX_IMAGES_PER_BOARD = 50
 MAX_USER_NAME_LENGTH = 50
 MAX_STROKE_IDS_PER_DELETE = 100
 MAX_IMAGE_IDS_PER_DELETE = 50
@@ -141,6 +141,8 @@ def validate_user_name(name: Any) -> str:
     """Validate and sanitize user name."""
     if not isinstance(name, str):
         return 'Anonymous'
+    # Remove HTML-like tags (basic XSS prevention)
+    name = name.replace('<', '').replace('>', '')
     # Remove non-printable characters and strip
     clean = ''.join(c for c in name if c.isprintable())
     clean = clean.strip()[:MAX_USER_NAME_LENGTH]

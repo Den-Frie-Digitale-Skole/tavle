@@ -57,8 +57,12 @@ class SocketRateLimiter:
     
     def is_allowed(self, sid: str, event: str) -> bool:
         """Check if event is allowed under rate limit."""
+        # Use IP address instead of sid for rate limiting to prevent multiple tab abuse
+        # Fallback to sid if remote_addr is not available (e.g. testing)
+        identifier = request.remote_addr or sid
+        
         limit, window = self.limits.get(event, self.limits['default'])
-        key = f"{sid}:{event}"
+        key = f"{identifier}:{event}"
         now = time.time()
         
         entry = self.events[key]

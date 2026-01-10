@@ -5,7 +5,7 @@ Security-hardened version with input validation, session management, and rate li
 import os
 import logging
 from logging.handlers import RotatingFileHandler
-from flask import Flask, render_template, abort, jsonify
+from flask import Flask, render_template, abort, jsonify, redirect, url_for
 from flask_socketio import SocketIO
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -13,6 +13,7 @@ from flask_limiter.util import get_remote_address
 from models import init_db, get_document_by_token, open_db_connection, close_db_connection, get_pool_status
 from api import api_bp
 from socketio_handlers import register_socketio_handlers
+from setup import needs_setup, complete_setup, get_admin_token, get_secret_key
 
 # =============================================================================
 # Logging Setup
@@ -83,7 +84,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+app.config['SECRET_KEY'] = get_secret_key()
 
 # Setup logging (creates security_logger as module-level for import by other modules)
 security_logger = setup_logging(app)
@@ -194,10 +195,32 @@ app.register_blueprint(api_bp)
 # Public Routes
 # =============================================================================
 
+@app.route('/setup')
+@limiter.limit("10 per minute")
+def setup_page():
+    """
+    First-run setup page.
+    Only accessible if setup hasn't been completed yet.
+    Shows the generated admin API token.
+    """
+    if not needs_setup():
+        # Setup already complete, redirect to landing
+        return redirect(url_for('index'))
+    
+    # Complete setup and get the generated token
+    config = complete_setup()
+    
+    return render_template('setup.html', 
+                           admin_token=config['admin_api_token'],
+                           setup_complete=True)
+
+
 @app.route('/')
 @limiter.limit("30 per minute")
 def index():
-    """Landing page."""
+    """Landing page. Redirects to setup if first run."""
+    if needs_setup():
+        return redirect(url_for('setup_page'))
     return render_template('landing.html')
 
 

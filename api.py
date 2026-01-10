@@ -8,12 +8,15 @@ from functools import wraps
 from flask import Blueprint, request, url_for
 from flask_restful import Api, Resource, reqparse
 from models import Document, Stroke, Image, get_or_create_document, db
+from setup import get_admin_token
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 api = Api(api_bp)
 
-# Admin API token
-ADMIN_API_TOKEN = os.environ.get('ADMIN_API_TOKEN', 'dev-admin-token-change-in-production')
+
+def get_current_admin_token():
+    """Get the current admin API token (called per-request to allow config reload)."""
+    return get_admin_token()
 
 
 def require_admin_token(f):
@@ -28,7 +31,7 @@ def require_admin_token(f):
         if len(parts) != 2 or parts[0].lower() != 'bearer':
             return {'error': 'Invalid Authorization header format'}, 401
         
-        if parts[1] != ADMIN_API_TOKEN:
+        if parts[1] != get_current_admin_token():
             return {'error': 'Invalid API token'}, 403
         
         return f(*args, **kwargs)

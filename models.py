@@ -229,10 +229,43 @@ class Image(BaseModel):
         return image
 
 
+class Settings(BaseModel):
+    """
+    Key-value settings storage.
+    Used for storing application configuration like API keys.
+    """
+    key = CharField(primary_key=True, max_length=100)
+    value = TextField()
+    created_at = DateTimeField(default=datetime.utcnow)
+    updated_at = DateTimeField(default=datetime.utcnow)
+
+    def save(self, *args, **kwargs):
+        self.updated_at = datetime.utcnow()
+        return super().save(*args, **kwargs)
+
+    @classmethod
+    def get_value(cls, key: str, default: str = None) -> str:
+        """Get a setting value by key."""
+        try:
+            setting = cls.get_by_id(key)
+            return setting.value
+        except cls.DoesNotExist:
+            return default
+
+    @classmethod
+    def set_value(cls, key: str, value: str) -> 'Settings':
+        """Set a setting value (create or update)."""
+        setting, created = cls.get_or_create(key=key, defaults={'value': value})
+        if not created:
+            setting.value = value
+            setting.save()
+        return setting
+
+
 def init_db():
     """Initialize database tables."""
     db.connect(reuse_if_open=True)
-    db.create_tables([Document, Stroke, Image], safe=True)
+    db.create_tables([Document, Stroke, Image, Settings], safe=True)
 
 
 def get_or_create_document(doc_id):

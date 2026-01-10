@@ -10,9 +10,33 @@ import sys
 import requests
 from urllib.parse import urljoin
 
+# Import setup module for token management
+try:
+    from setup import get_admin_token
+    SETUP_AVAILABLE = True
+except ImportError:
+    SETUP_AVAILABLE = False
+
 # Configuration
 DEFAULT_BASE_URL = os.environ.get('WHITEBOARD_URL', 'http://localhost:5050')
-API_TOKEN = os.environ.get('ADMIN_API_TOKEN', 'dev-admin-token-change-in-production')
+
+
+def get_api_token():
+    """Get the API token from environment or setup config."""
+    # 1. Check environment variable first
+    env_token = os.environ.get('ADMIN_API_TOKEN')
+    if env_token and env_token != 'dev-admin-token-change-in-production':
+        return env_token
+    
+    # 2. Try to get from setup config
+    if SETUP_AVAILABLE:
+        return get_admin_token()
+    
+    # 3. Fallback to dev token
+    return 'dev-admin-token-change-in-production'
+
+
+API_TOKEN = get_api_token()
 
 
 class WhiteboardCLI:
