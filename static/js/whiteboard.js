@@ -846,10 +846,10 @@ class Whiteboard {
 
         // Delete intersecting strokes
         if (strokesToDelete.length > 0) {
-            // Add to history
+            // Add to history (include id!)
             const deletedStrokes = strokesToDelete.map(id => {
                 const stroke = this.strokes.get(id);
-                return { ...stroke };
+                return { id, ...stroke };
             });
             
             this._addToHistory({
@@ -861,7 +861,7 @@ class Whiteboard {
             strokesToDelete.forEach(strokeId => {
                 this.strokes.delete(strokeId);
                 if (this.onStrokeDelete) {
-                    this.onStrokeDelete({ strokeId });
+                    this.onStrokeDelete({ strokeIds: [strokeId] });
                 }
             });
 
@@ -1478,18 +1478,22 @@ class Whiteboard {
     deleteSelected() {
         const deletedStrokeIds = Array.from(this.selectedStrokes);
         const deletedImageIds = Array.from(this.selectedImages);
+        
+        console.log('deleteSelected called. Stroke IDs:', deletedStrokeIds, 'Image IDs:', deletedImageIds);
 
-        // Save strokes for history before deleting
+        // Save strokes for history before deleting (include id!)
         const deletedStrokes = deletedStrokeIds.map(id => {
             const stroke = this.strokes.get(id);
-            return stroke ? { ...stroke } : null;
+            return stroke ? { id, ...stroke } : null;
         }).filter(s => s !== null);
 
-        // Save images for history before deleting
+        // Save images for history before deleting (include id!)
         const deletedImages = deletedImageIds.map(id => {
             const image = this.images.get(id);
-            return image ? { ...image } : null;
+            return image ? { id, ...image } : null;
         }).filter(i => i !== null);
+        
+        console.log('Saved for history - strokes:', deletedStrokes, 'images:', deletedImages);
 
         // Add to history
         if (deletedStrokes.length > 0) {
@@ -1774,9 +1778,14 @@ class Whiteboard {
     }
 
     undo() {
-        if (this.historyIndex < 0) return;
+        console.log('Undo called. historyIndex:', this.historyIndex, 'history length:', this.history.length);
+        if (this.historyIndex < 0) {
+            console.log('Nothing to undo');
+            return;
+        }
 
         const action = this.history[this.historyIndex];
+        console.log('Undoing action:', action);
         this._undoAction(action);
         this.historyIndex--;
     }
@@ -1790,9 +1799,11 @@ class Whiteboard {
     }
 
     _undoAction(action) {
+        console.log('_undoAction called with:', action.type);
         switch (action.type) {
             case 'stroke-add':
                 // Remove the stroke
+                console.log('Undoing stroke-add:', action.strokeId);
                 this.strokes.delete(action.strokeId);
                 this.selectedStrokes.delete(action.strokeId);
                 if (this.onStrokeDelete) {
@@ -1801,12 +1812,24 @@ class Whiteboard {
                 break;
 
             case 'stroke-delete':
-                // Restore the strokes
+            case 'erase':
+                // Restore the strokes and sync to server
+                console.log('Undoing stroke-delete/erase, strokes:', action.strokes);
                 action.strokes.forEach(stroke => {
+                    console.log('Restoring stroke:', stroke.id, stroke);
                     this.strokes.set(stroke.id, { ...stroke });
+                    // Emit to sync the restored stroke back to server
+                    if (this.onStrokeComplete) {
+                        this.onStrokeComplete({
+                            strokeId: stroke.id,
+                            points: stroke.points,
+                            color: stroke.color,
+                            strokeWidth: stroke.strokeWidth,
+                            transform: stroke.transform,
+                            zIndex: stroke.zIndex
+                        });
+                    }
                 });
-                // Note: We don't emit restore events - the strokes are already gone from server
-                // This is local-only undo. For full collaborative undo, server support is needed.
                 break;
 
             case 'stroke-move':
@@ -1836,7 +1859,7 @@ class Whiteboard {
                 break;
 
             case 'image-delete':
-                // Restore the images
+                // Restore the images and sync to server
                 action.images.forEach(image => {
                     this.images.set(image.id, { ...image });
                     // Reload image into cache
@@ -1846,6 +1869,10 @@ class Whiteboard {
                         this._redrawBase();
                     };
                     img.src = image.data;
+                    // Emit to sync the restored image back to server
+                    if (this.onImageAdd) {
+                        this.onImageAdd(image);
+                    }
                 });
                 break;
 
@@ -1897,6 +1924,7 @@ class Whiteboard {
                 break;
 
             case 'stroke-delete':
+            case 'erase':
                 // Re-delete the strokes
                 action.strokes.forEach(stroke => {
                     this.strokes.delete(stroke.id);

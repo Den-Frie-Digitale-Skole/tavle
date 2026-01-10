@@ -1,13 +1,10 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Setup - Collaborative Whiteboard</title>
-    <!-- Tailwind CSS (local) -->
-    <script src="/static/js/vendor/tailwind.js"></script>
-</head>
-<body class="min-h-screen flex items-center justify-center p-4" style="background: #f5f5f0;">
+{% extends "base.html" %}
+
+{% block title %}Setup - Collaborative Whiteboard{% endblock %}
+
+{% block body_attrs %}class="min-h-screen flex items-center justify-center p-4" style="background: #f5f5f0;"{% endblock %}
+
+{% block body %}
     <!-- Background decorations -->
     <div class="fixed inset-0 overflow-hidden pointer-events-none">
         <div class="absolute top-12 right-20 w-16 h-16 bg-emerald-500 opacity-90" style="transform: rotate(20deg);"></div>
@@ -136,7 +133,9 @@
             Configuration saved to <code class="bg-white px-2 py-0.5 border border-gray-300 font-mono">.whiteboard_setup.json</code>
         </p>
     </div>
+{% endblock %}
 
+{% block scripts %}
     <script>
         function copyToken() {
             const tokenInput = document.getElementById('apiToken');
@@ -155,5 +154,4 @@
             });
         }
     </script>
-</body>
-</html>
+{% endblock %}

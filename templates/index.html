@@ -1,14 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
+{% extends "base.html" %}
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Collaborative Whiteboard</title>
+{% block title %}Collaborative Whiteboard{% endblock %}
 
-    <!-- Tailwind CSS (local) -->
-    <script src="/static/js/vendor/tailwind.js"></script>
-
+{% block head %}
     <!-- Whiteboard CSS -->
     <link rel="stylesheet" href="/static/css/whiteboard.css">
 
@@ -30,10 +24,11 @@
       type="text/css"
       href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css"
     />
+{% endblock %}
 
-</head>
+{% block body_attrs %}class="bg-gray-100 overflow-hidden"{% endblock %}
 
-<body class="bg-gray-100 overflow-hidden">
+{% block body %}
     <!-- Main Whiteboard Component -->
     <div x-data="whiteboardApp()" x-init="init()" class="whiteboard-container" :data-mode="mode">
 
@@ -241,7 +236,7 @@
                     </div>
                     <button @click="toggleUserPanel()" 
                         class="text-gray-900 hover:text-gray-700 transition-colors">
-                        <i class="ph ph-caret-down text-lg transition-transform" :class="userPanelExpanded ? 'rotate-180' : ''"></i>
+                        <i class="ph text-lg transition-transform" :class="userPanelExpanded ? 'ph-caret-down' : 'ph-caret-up'"></i>
                     </button>
                 </div>
 
@@ -652,6 +647,4 @@
             };
         }
     </script>
-</body>
-
-</html>
+{% endblock %}

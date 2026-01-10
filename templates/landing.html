@@ -1,13 +1,10 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Whiteboard</title>
-    <!-- Tailwind CSS (local) -->
-    <script src="/static/js/vendor/tailwind.js"></script>
-</head>
-<body class="min-h-screen flex items-center justify-center p-4" style="background: #f5f5f0;">
+{% extends "base.html" %}
+
+{% block title %}Whiteboard{% endblock %}
+
+{% block body_attrs %}class="min-h-screen flex items-center justify-center p-4" style="background: #f5f5f0;"{% endblock %}
+
+{% block body %}
     <!-- Background decorations -->
     <div class="fixed inset-0 overflow-hidden pointer-events-none">
         <div class="absolute top-16 left-16 w-20 h-20 bg-red-500 opacity-90" style="transform: rotate(15deg);"></div>
@@ -107,5 +104,4 @@
             Built with Flask, Socket.IO, and ❤️
         </p>
     </div>
-</body>
-</html>
+{% endblock %}
