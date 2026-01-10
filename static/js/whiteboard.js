@@ -1478,8 +1478,6 @@ class Whiteboard {
     deleteSelected() {
         const deletedStrokeIds = Array.from(this.selectedStrokes);
         const deletedImageIds = Array.from(this.selectedImages);
-        
-        console.log('deleteSelected called. Stroke IDs:', deletedStrokeIds, 'Image IDs:', deletedImageIds);
 
         // Save strokes for history before deleting (include id!)
         const deletedStrokes = deletedStrokeIds.map(id => {
@@ -1492,8 +1490,6 @@ class Whiteboard {
             const image = this.images.get(id);
             return image ? { id, ...image } : null;
         }).filter(i => i !== null);
-        
-        console.log('Saved for history - strokes:', deletedStrokes, 'images:', deletedImages);
 
         // Add to history
         if (deletedStrokes.length > 0) {
@@ -1778,14 +1774,9 @@ class Whiteboard {
     }
 
     undo() {
-        console.log('Undo called. historyIndex:', this.historyIndex, 'history length:', this.history.length);
-        if (this.historyIndex < 0) {
-            console.log('Nothing to undo');
-            return;
-        }
+        if (this.historyIndex < 0) return;
 
         const action = this.history[this.historyIndex];
-        console.log('Undoing action:', action);
         this._undoAction(action);
         this.historyIndex--;
     }
@@ -1799,11 +1790,9 @@ class Whiteboard {
     }
 
     _undoAction(action) {
-        console.log('_undoAction called with:', action.type);
         switch (action.type) {
             case 'stroke-add':
                 // Remove the stroke
-                console.log('Undoing stroke-add:', action.strokeId);
                 this.strokes.delete(action.strokeId);
                 this.selectedStrokes.delete(action.strokeId);
                 if (this.onStrokeDelete) {
@@ -1814,9 +1803,7 @@ class Whiteboard {
             case 'stroke-delete':
             case 'erase':
                 // Restore the strokes and sync to server
-                console.log('Undoing stroke-delete/erase, strokes:', action.strokes);
                 action.strokes.forEach(stroke => {
-                    console.log('Restoring stroke:', stroke.id, stroke);
                     this.strokes.set(stroke.id, { ...stroke });
                     // Emit to sync the restored stroke back to server
                     if (this.onStrokeComplete) {

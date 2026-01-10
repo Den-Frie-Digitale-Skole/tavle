@@ -112,8 +112,8 @@
                 <!-- Divider -->
                 <div class="w-0.5 h-8 bg-gray-900 mx-1"></div>
 
-                <!-- Stroke Width Presets -->
-                <div class="flex items-center gap-1 px-2">
+                <!-- Stroke Width Presets (shown when not erasing) -->
+                <div class="flex items-center gap-1 px-2" x-show="mode !== 'erase'">
                     <template x-for="sw in strokeWidths" :key="sw.value">
                         <button @click="setStrokeWidth(sw.value)"
                             :class="strokeWidth == sw.value ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 text-gray-700'"
@@ -121,6 +121,19 @@
                             :style="strokeWidth == sw.value ? 'border: 2px solid #1e1e1e;' : 'border: 2px solid transparent;'"
                             :title="sw.label">
                             <div class="rounded-full bg-current" :style="{ width: sw.size + 'px', height: sw.size + 'px' }"></div>
+                        </button>
+                    </template>
+                </div>
+
+                <!-- Eraser Size Presets (shown when erasing) -->
+                <div class="flex items-center gap-1 px-2" x-show="mode === 'erase'" x-cloak>
+                    <template x-for="ew in eraserWidths" :key="ew.value">
+                        <button @click="setEraserWidth(ew.value)"
+                            :class="eraserWidth == ew.value ? 'bg-rose-500 text-white' : 'hover:bg-gray-100 text-gray-700'"
+                            class="w-9 h-9 transition-all duration-150 flex items-center justify-center"
+                            :style="eraserWidth == ew.value ? 'border: 2px solid #1e1e1e;' : 'border: 2px solid transparent;'"
+                            :title="ew.label">
+                            <div class="rounded-full border-2 border-current" :style="{ width: ew.size + 'px', height: ew.size + 'px' }"></div>
                         </button>
                     </template>
                 </div>
@@ -390,21 +403,55 @@
     <script>
         // Alpine.js Component
         function whiteboardApp() {
+            // Default preferences
+            const defaultPrefs = {
+                color: '#1e1e1e',
+                strokeWidth: 2,
+                backgroundColor: '#ffffff',
+                showGrid: true,
+                eraserWidth: 20
+            };
+
+            // Load preferences from localStorage
+            function loadPreferences() {
+                try {
+                    const stored = localStorage.getItem('whiteboardPreferences');
+                    if (stored) {
+                        return { ...defaultPrefs, ...JSON.parse(stored) };
+                    }
+                } catch (e) {
+                    console.warn('Failed to load preferences:', e);
+                }
+                return defaultPrefs;
+            }
+
+            // Save preferences to localStorage
+            function savePreferences(prefs) {
+                try {
+                    localStorage.setItem('whiteboardPreferences', JSON.stringify(prefs));
+                } catch (e) {
+                    console.warn('Failed to save preferences:', e);
+                }
+            }
+
+            const prefs = loadPreferences();
+
             return {
                 // State
                 whiteboard: null,
                 syncManager: null,
                 tokenId: '{{ token_id }}',
 
-                // UI State
+                // UI State (loaded from preferences)
                 mode: 'draw',
-                color: '#1e1e1e',
-                strokeWidth: 2,
+                color: prefs.color,
+                strokeWidth: prefs.strokeWidth,
                 zoom: 1,
                 connected: false,
                 loading: true,
-                showGrid: true,
-                backgroundColor: '#ffffff',
+                showGrid: prefs.showGrid,
+                backgroundColor: prefs.backgroundColor,
+                eraserWidth: prefs.eraserWidth,
 
                 // User state
                 userName: '',  // Will be set in init() with sanitization
@@ -444,6 +491,25 @@
                     { value: 16, size: 16, label: 'Extra thick' },
                 ],
 
+                // Eraser width presets
+                eraserWidths: [
+                    { value: 10, size: 6, label: 'Small' },
+                    { value: 20, size: 10, label: 'Medium' },
+                    { value: 40, size: 14, label: 'Large' },
+                    { value: 80, size: 18, label: 'Extra large' },
+                ],
+
+                // Helper to save current preferences
+                _savePrefs() {
+                    savePreferences({
+                        color: this.color,
+                        strokeWidth: this.strokeWidth,
+                        backgroundColor: this.backgroundColor,
+                        showGrid: this.showGrid,
+                        eraserWidth: this.eraserWidth
+                    });
+                },
+
                 async init() {
                     // Load and sanitize stored user name
                     const storedName = localStorage.getItem('whiteboardUserName');
@@ -476,12 +542,17 @@
                     if (this._initialized) return;
                     this._initialized = true;
 
-                    // Initialize Whiteboard
+                    // Initialize Whiteboard with saved preferences
                     this.whiteboard = new Whiteboard(
                         this.$refs.baseCanvas,
                         this.$refs.activeCanvas,
                         { color: this.color, strokeWidth: this.strokeWidth }
                     );
+
+                    // Apply additional saved preferences
+                    this.whiteboard.setBackgroundColor(this.backgroundColor);
+                    this.whiteboard.setShowGrid(this.showGrid);
+                    this.whiteboard.setEraserWidth(this.eraserWidth);
 
                     // Initialize SyncManager with user info
                     this.syncManager = new SyncManager(this.whiteboard, this.tokenId, {
@@ -544,11 +615,13 @@
                 setColor(color) {
                     this.color = color;
                     this.whiteboard.setColor(color);
+                    this._savePrefs();
                 },
 
                 setStrokeWidth(width) {
                     this.strokeWidth = parseInt(width);
                     this.whiteboard.setStrokeWidth(this.strokeWidth);
+                    this._savePrefs();
                 },
 
                 setBackgroundColor(color) {
@@ -556,6 +629,15 @@
                     if (this.whiteboard) {
                         this.whiteboard.setBackgroundColor(color);
                     }
+                    this._savePrefs();
+                },
+
+                setEraserWidth(width) {
+                    this.eraserWidth = parseInt(width);
+                    if (this.whiteboard) {
+                        this.whiteboard.setEraserWidth(this.eraserWidth);
+                    }
+                    this._savePrefs();
                 },
 
                 toggleGrid() {
@@ -563,6 +645,7 @@
                     if (this.whiteboard) {
                         this.whiteboard.setShowGrid(this.showGrid);
                     }
+                    this._savePrefs();
                 },
 
                 zoomIn() {
