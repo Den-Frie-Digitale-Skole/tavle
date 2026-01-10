@@ -13,7 +13,6 @@ from setup import get_admin_token
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 api = Api(api_bp)
 
-
 def get_current_admin_token():
     """Get the current admin API token (called per-request to allow config reload)."""
     return get_admin_token()
@@ -46,18 +45,35 @@ def get_document_or_404(doc_id):
         return None
 
 
+class DocumentedResource(Resource):
+    """Base Resource that includes documentation metadata."""
+    
+    url = '/NOT_SET/'
+
+    def __init__(self):
+        super().__init__()
+        self.parser = reqparse.RequestParser()
+
+
 # =============================================================================
 # Board/Document Resources
 # =============================================================================
 
-class BoardsResource(Resource):
+class BoardsResource(DocumentedResource):
     """
     GET /api/boards - List all boards
     POST /api/boards - Create new board
     """
     
     method_decorators = [require_admin_token]
-    
+    desc = 'Manage multiple whiteboards'
+    url = '/boards'
+
+    def __init__(self):
+        super().__init__()
+        self.parser.add_argument('name', type=str, default='Untitled')
+
+
     def get(self):
         """List all boards."""
         boards = Document.select().order_by(Document.created_at.desc())
@@ -65,6 +81,7 @@ class BoardsResource(Resource):
             'boards': [b.to_dict(include_strokes=False) for b in boards],
             'count': boards.count()
         }, 200
+    get.response = {"boards": "List of board objects without strokes/images", "count": "Integer"}
     
     def post(self):
         """Create a new board."""
@@ -78,9 +95,10 @@ class BoardsResource(Resource):
             'board': doc.to_dict(include_strokes=False),
             'url': url_for('board', token=doc.access_token, _external=True)
         }, 201
+    post.response = {"board": "Board object without strokes/images", "url": "Url with correct tokens"}
 
 
-class BoardResource(Resource):
+class BoardResource(DocumentedResource):
     """
     GET /api/boards/<board_id> - Get board details (with strokes/images)
     PATCH /api/boards/<board_id> - Update board
@@ -88,8 +106,13 @@ class BoardResource(Resource):
     """
     
     method_decorators = [require_admin_token]
-    name = 'Board'
     desc = 'Manage individual whiteboard'
+    url = '/boards/<string:board_id>'
+
+    def __init__(self):
+        super().__init__()
+        self.parser.add_argument('name', type=str, required=False)
+        self.parser.add_argument('is_active', type=bool, required=False)
 
     def get(self, board_id):
         """Get board details with all strokes and images."""
@@ -103,6 +126,10 @@ class BoardResource(Resource):
             'stroke_count': doc.strokes.count(),
             'image_count': doc.images.count()
         }, 200
+    get.response = {"board": 
+                    "Board object with strokes/images", 
+                    "url": "Url with correct tokens", 
+                    "stroke_count": "Integer", "image_count": "Integer"}
     
     def patch(self, board_id):
         """Update board (name, active status)."""
@@ -110,10 +137,7 @@ class BoardResource(Resource):
         if not doc:
             return {'error': 'Board not found'}, 404
         
-        parser = reqparse.RequestParser()
-        parser.add_argument('name', type=str, required=False)
-        parser.add_argument('is_active', type=bool, required=False)
-        args = parser.parse_args()
+        args = self.parser.parse_args()
         
         if args.get('name') is not None:
             doc.name = args['name']
@@ -123,7 +147,8 @@ class BoardResource(Resource):
         doc.save()
         
         return {'board': doc.to_dict(include_strokes=False)}, 200
-    
+    patch.response = {"board": "Board object without strokes/images"}
+
     def delete(self, board_id):
         """Delete a board and all its contents."""
         doc = get_document_or_404(board_id)
@@ -136,13 +161,15 @@ class BoardResource(Resource):
         doc.delete_instance()
         
         return {'deleted': board_id}, 200
+    delete.response = {"deleted": "Board ID"}
 
 
-class BoardTokenResource(Resource):
+class BoardTokenResource(DocumentedResource):
     """POST /api/boards/<board_id>/regenerate-token - Regenerate access token."""
     
     method_decorators = [require_admin_token]
-    
+    url = '/boards/<string:board_id>/regenerate-token'
+
     def post(self, board_id):
         """Regenerate access token for a board (invalidates old links)."""
         doc = get_document_or_404(board_id)
@@ -156,28 +183,28 @@ class BoardTokenResource(Resource):
             'board': doc.to_dict(include_strokes=False),
             'url': url_for('board', token=doc.access_token, _external=True)
         }, 200
-
+    post.response = {"board": "Board object without strokes/images", "url": "Url with correct tokens"}
 
 # =============================================================================
 # Stroke Resources
 # =============================================================================
 
-class StrokesResource(Resource):
+class StrokesResource(DocumentedResource):
     """
     POST /api/boards/<board_id>/strokes - Create new stroke
     DELETE /api/boards/<board_id>/strokes - Clear all strokes
     """
     
     method_decorators = [require_admin_token]
-    
+    url = '/boards/<string:board_id>/strokes'
+
     def __init__(self):
-        self.parser = reqparse.RequestParser()
+        super().__init__()
         self.parser.add_argument('id', type=str, required=False)
         self.parser.add_argument('points', type=list, location='json', required=True)
         self.parser.add_argument('color', type=str, default='#000000')
         self.parser.add_argument('strokeWidth', type=float, default=4.0)
         self.parser.add_argument('transform', type=dict, location='json', required=False)
-        super().__init__()
     
     def post(self, board_id):
         args = self.parser.parse_args()
@@ -201,7 +228,8 @@ class StrokesResource(Resource):
         doc.save()  # Update document's updated_at
         
         return stroke.to_dict(), 201
-    
+    post.response = {"stroke": "Stroke object"}
+   
     def delete(self, board_id):
         """Clear all strokes from board."""
         doc = get_document_or_404(board_id)
@@ -212,9 +240,10 @@ class StrokesResource(Resource):
         doc.save()
         
         return {'deleted': deleted_count}, 200
+    delete.response = {"deleted": "Integer count"}
 
 
-class StrokeResource(Resource):
+class StrokeResource(DocumentedResource):
     """
     GET /api/boards/<board_id>/strokes/<stroke_id> - Get single stroke
     PUT /api/boards/<board_id>/strokes/<stroke_id> - Update stroke
@@ -222,14 +251,14 @@ class StrokeResource(Resource):
     """
     
     method_decorators = [require_admin_token]
-    
+    url = '/boards/<string:board_id>/strokes/<string:stroke_id>'
+
     def __init__(self):
-        self.parser = reqparse.RequestParser()
+        super().__init__()
         self.parser.add_argument('transform', type=dict, location='json', required=False)
         self.parser.add_argument('points', type=list, location='json', required=False)
         self.parser.add_argument('color', type=str, required=False)
         self.parser.add_argument('strokeWidth', type=float, required=False)
-        super().__init__()
     
     def get(self, board_id, stroke_id):
         try:
@@ -237,7 +266,8 @@ class StrokeResource(Resource):
             return stroke.to_dict(), 200
         except Stroke.DoesNotExist:
             return {'error': 'Stroke not found'}, 404
-    
+    get.response = {"stroke": "Stroke object"}
+
     def put(self, board_id, stroke_id):
         args = self.parser.parse_args()
         
@@ -263,6 +293,7 @@ class StrokeResource(Resource):
         doc.save()
         
         return stroke.to_dict(), 200
+    put.response = {"stroke": "Stroke object"}
     
     def delete(self, board_id, stroke_id):
         try:
@@ -276,22 +307,25 @@ class StrokeResource(Resource):
             return {'deleted': stroke_id}, 200
         except Stroke.DoesNotExist:
             return {'error': 'Stroke not found'}, 404
-
-
+    delete.response = {
+        "200": {"deleted": "Stroke ID"},
+        "404": {"error": "Error message if not found"}
+    }
 # =============================================================================
 # Image Resources
 # =============================================================================
 
-class ImagesResource(Resource):
+class ImagesResource(DocumentedResource):
     """
     POST /api/boards/<board_id>/images - Create new image
     DELETE /api/boards/<board_id>/images - Clear all images
     """
     
     method_decorators = [require_admin_token]
-    
+    url = '/boards/<string:board_id>/images'
+
     def __init__(self):
-        self.parser = reqparse.RequestParser()
+        super().__init__()
         self.parser.add_argument('id', type=str, required=False)
         self.parser.add_argument('data', type=str, required=True)  # Base64 image data
         self.parser.add_argument('x', type=float, default=0)
@@ -299,7 +333,6 @@ class ImagesResource(Resource):
         self.parser.add_argument('width', type=float, default=200)
         self.parser.add_argument('height', type=float, default=200)
         self.parser.add_argument('transform', type=dict, location='json', required=False)
-        super().__init__()
     
     def post(self, board_id):
         args = self.parser.parse_args()
@@ -325,7 +358,8 @@ class ImagesResource(Resource):
         doc.save()  # Update document's updated_at
         
         return image.to_dict(), 201
-    
+    post.response = {"image": "Image object"}
+
     def delete(self, board_id):
         """Clear all images from board."""
         doc = get_document_or_404(board_id)
@@ -336,9 +370,9 @@ class ImagesResource(Resource):
         doc.save()
         
         return {'deleted': deleted_count}, 200
+    delete.response = {"deleted": "Integer count"}
 
-
-class ImageResource(Resource):
+class ImageResource(DocumentedResource):
     """
     GET /api/boards/<board_id>/images/<image_id> - Get single image
     PUT /api/boards/<board_id>/images/<image_id> - Update image
@@ -346,23 +380,24 @@ class ImageResource(Resource):
     """
     
     method_decorators = [require_admin_token]
-    
+    url = '/boards/<string:board_id>/images/<string:image_id>'
+
     def __init__(self):
-        self.parser = reqparse.RequestParser()
+        super().__init__()
         self.parser.add_argument('transform', type=dict, location='json', required=False)
         self.parser.add_argument('x', type=float, required=False)
         self.parser.add_argument('y', type=float, required=False)
         self.parser.add_argument('width', type=float, required=False)
         self.parser.add_argument('height', type=float, required=False)
-        super().__init__()
-    
+
     def get(self, board_id, image_id):
         try:
             image = Image.get((Image.id == image_id) & (Image.document_id == board_id))
             return image.to_dict(), 200
         except Image.DoesNotExist:
             return {'error': 'Image not found'}, 404
-    
+    get.response = {"image": "Image object"}
+
     def put(self, board_id, image_id):
         args = self.parser.parse_args()
         
@@ -390,7 +425,8 @@ class ImageResource(Resource):
         doc.save()
         
         return image.to_dict(), 200
-    
+    put.response = {"image": "Image object"}
+
     def delete(self, board_id, image_id):
         try:
             image = Image.get((Image.id == image_id) & (Image.document_id == board_id))
@@ -411,15 +447,14 @@ class ImageResource(Resource):
 
 
 # Board resources
-api.add_resource(BoardsResource, '/boards')
-api.add_resource(BoardResource, '/boards/<string:board_id>')
-api.add_resource(BoardTokenResource, '/boards/<string:board_id>/regenerate-token')
+api.add_resource(BoardsResource, BoardsResource.url)
+api.add_resource(BoardResource, BoardResource.url)
+api.add_resource(BoardTokenResource, BoardTokenResource.url)
 
 # Stroke resources
-api.add_resource(StrokesResource, '/boards/<string:board_id>/strokes')
-api.add_resource(StrokeResource, '/boards/<string:board_id>/strokes/<string:stroke_id>')
-
+api.add_resource(StrokesResource, StrokesResource.url)
+api.add_resource(StrokeResource, StrokeResource.url)
 # Image resources
-api.add_resource(ImagesResource, '/boards/<string:board_id>/images')
-api.add_resource(ImageResource, '/boards/<string:board_id>/images/<string:image_id>')
+api.add_resource(ImagesResource, ImagesResource.url)
+api.add_resource(ImageResource, ImageResource.url)
 

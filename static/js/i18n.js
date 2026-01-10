@@ -111,6 +111,7 @@ const translations = {
             needBoard: 'Need a board?',
             contactAdmin: 'Contact your administrator to create one.',
             footer: 'Built with Flask, Socket.IO, and ❤️',
+            apiDocs: 'API Documentation',
         },
         
         // Setup page
@@ -275,6 +276,7 @@ const translations = {
             needBoard: 'Har du brug for en tavle?',
             contactAdmin: 'Kontakt din administrator for at oprette en.',
             footer: 'Bygget med Flask, Socket.IO og ❤️',
+            apiDocs: 'API Dokumentation',
         },
         
         // Setup page

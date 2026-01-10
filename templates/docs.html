@@ -21,13 +21,6 @@
         .method-patch { background: #8b5cf6; color: white; }
         .method-delete { background: #ef4444; color: white; }
         
-        .endpoint-card {
-            transition: transform 0.15s ease;
-        }
-        .endpoint-card:hover {
-            transform: rotate(0deg) scale(1.01);
-        }
-        
         .param-table th,
         .param-table td {
             padding: 0.5rem 0.75rem;
@@ -72,7 +65,7 @@
                     </div>
                     <div>
                         <h1 class="text-2xl md:text-3xl font-black text-gray-900 tracking-tight leading-tight">
-                            API<br>Documentation
+                            API Documentation
                         </h1>
                         <p class="text-gray-600 text-sm uppercase tracking-widest font-medium mt-1" x-text="docs.version ? 'Version ' + docs.version : 'Loading...'"></p>
                     </div>
@@ -123,7 +116,7 @@
                             <!-- Endpoint Header -->
                             <div class="flex flex-wrap items-center gap-3 cursor-pointer" @click="open = !open">
                                 <span class="method-badge" :class="'method-' + endpoint.method.toLowerCase()" x-text="endpoint.method"></span>
-                                <code class="text-sm font-mono text-gray-800 font-medium" x-text="endpoint.path"></code>
+                                <code class="text-sm font-mono text-gray-800 font-medium" x-text="`${docs.base_url}${endpoint.path}`"></code>
                                 <span class="text-xs text-gray-500 ml-auto hidden md:inline" x-text="endpoint.description"></span>
                                 <svg class="w-5 h-5 text-gray-400 transition-transform" :class="{ 'rotate-180': open }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
