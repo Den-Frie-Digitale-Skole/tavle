@@ -57,25 +57,54 @@ def handle_disconnect():
 def handle_join(data):
     """
     Join a document room for real-time collaboration.
-    data: { documentId: string }
+    data: { documentId: string, userId: string, userName: string }
     """
     doc_id = data.get('documentId')
+    user_id = data.get('userId')
+    user_name = data.get('userName', 'Anonymous')
+    
     if doc_id:
         join_room(doc_id)
         emit('joined', {'documentId': doc_id, 'message': f'Joined room {doc_id}'})
-        print(f'Client joined room: {doc_id}')
+        print(f'Client {user_name} ({user_id}) joined room: {doc_id}')
+        
+        # Notify others that a user joined
+        if user_id:
+            emit('user-joined', {
+                'userId': user_id,
+                'userName': user_name
+            }, to=doc_id, include_self=False)
 
 
 @socketio.on('leave')
 def handle_leave(data):
     """
     Leave a document room.
-    data: { documentId: string }
+    data: { documentId: string, userId: string }
+    """
+    doc_id = data.get('documentId')
+    user_id = data.get('userId')
+    
+    if doc_id:
+        leave_room(doc_id)
+        print(f'Client {user_id} left room: {doc_id}')
+        
+        # Notify others that a user left
+        if user_id:
+            emit('user-left', {
+                'userId': user_id
+            }, to=doc_id, include_self=False)
+
+
+@socketio.on('cursor-move')
+def handle_cursor_move(data):
+    """
+    Broadcast cursor position to other users in the room.
+    data: { documentId, userId, userName, cursor: {x, y} }
     """
     doc_id = data.get('documentId')
     if doc_id:
-        leave_room(doc_id)
-        print(f'Client left room: {doc_id}')
+        emit('remote-cursor', data, to=doc_id, include_self=False)
 
 
 @socketio.on('stroke-point')

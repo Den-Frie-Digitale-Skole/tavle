@@ -138,12 +138,117 @@
             <span x-text="connected ? 'Connected' : 'Disconnected'"></span>
         </div>
 
+        <!-- User Panel (bottom right) -->
+        <div class="fixed bottom-4 right-4 z-50" x-show="userName">
+            <!-- Connected users panel -->
+            <div class="bg-white/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+                <!-- Header with your name -->
+                <div class="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <div class="w-3 h-3 rounded-full" :style="{ backgroundColor: userColor }"></div>
+                        <span class="text-sm font-medium" x-text="userName"></span>
+                        <span class="text-xs text-gray-400">(you)</span>
+                        <button @click="editUserName()" 
+                            class="p-1 text-gray-400 hover:text-blue-500 transition-colors"
+                            title="Edit name">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                        </button>
+                    </div>
+                    <button @click="toggleUserPanel()" 
+                        class="text-gray-400 hover:text-gray-600 transition-colors">
+                        <svg class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                            :class="userPanelExpanded ? 'rotate-180' : ''">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- User list -->
+                <div x-show="userPanelExpanded" x-transition class="max-h-48 overflow-y-auto">
+                    <template x-if="remoteUsers.length === 0">
+                        <div class="px-3 py-3 text-sm text-gray-400 text-center">
+                            No other users online
+                        </div>
+                    </template>
+                    <template x-for="user in remoteUsers" :key="user.oduserId">
+                        <div class="px-3 py-2 flex items-center justify-between hover:bg-gray-50 border-b border-gray-100 last:border-b-0">
+                            <div class="flex items-center gap-2">
+                                <div class="w-3 h-3 rounded-full" :style="{ backgroundColor: user.color }"></div>
+                                <span class="text-sm" x-text="user.name"></span>
+                            </div>
+                            <button @click="jumpToUser(user.oduserId)" 
+                                class="p-1 text-gray-400 hover:text-blue-500 transition-colors"
+                                title="Jump to user's location">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                        d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                        d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
         <!-- Loading Overlay -->
-        <div x-show="loading" x-transition class="absolute inset-0 bg-white/80 flex items-center justify-center z-50">
+        <div x-show="loading && userName" x-transition class="absolute inset-0 bg-white/80 flex items-center justify-center z-50">
             <div class="text-center">
                 <div class="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto">
                 </div>
                 <p class="mt-4 text-gray-600">Loading whiteboard...</p>
+            </div>
+        </div>
+
+        <!-- Name Entry Modal (shown before whiteboard) -->
+        <div x-show="!userName" class="absolute inset-0 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center z-[100]">
+            <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4">
+                <div class="text-center mb-6">
+                    <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                    </div>
+                    <h1 class="text-2xl font-bold text-gray-800">Welcome to the Whiteboard</h1>
+                    <p class="text-gray-500 mt-2">Enter your name to join the collaboration</p>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Your Name</label>
+                        <input type="text" 
+                            x-ref="nameInput"
+                            x-model="userNameInput" 
+                            @keydown.enter="setUserName()"
+                            placeholder="Enter your name..."
+                            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Or pick a fun name:</label>
+                        <div class="flex flex-wrap gap-2">
+                            <template x-for="animal in suggestedNames" :key="animal">
+                                <button @click="userNameInput = animal" 
+                                    :class="userNameInput === animal ? 'bg-blue-100 border-blue-500 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'"
+                                    class="px-3 py-1.5 text-sm border rounded-full transition-colors">
+                                    <span x-text="animal"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+
+                    <button @click="setUserName()" 
+                        :disabled="!userNameInput.trim()"
+                        :class="userNameInput.trim() ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed'"
+                        class="w-full py-3 text-white font-medium rounded-xl transition-colors mt-4">
+                        Join Whiteboard
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -169,6 +274,19 @@
                 connected: false,
                 loading: true,
 
+                // User state
+                userName: localStorage.getItem('whiteboardUserName') || '',
+                userNameInput: '',
+                userColor: '#3b82f6',
+                remoteUsers: [],
+                userPanelExpanded: true,
+
+                // Suggested rare animal names
+                suggestedNames: [
+                    'Axolotl', 'Quokka', 'Pangolin', 'Okapi', 'Narwhal',
+                    'Kakapo', 'Fossa', 'Dugong', 'Saola', 'Tarsier'
+                ],
+
                 // Color palette
                 colors: ['#000000', '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6'],
 
@@ -181,6 +299,14 @@
                             setTimeout(resolve, 1000);
                         });
                     }
+
+                    // If user already has a name saved, start the whiteboard
+                    if (this.userName) {
+                        await this.startWhiteboard();
+                    }
+                },
+
+                async startWhiteboard() {
                     // Guard against accidental double-initialization.
                     // This can happen during dev (Flask debug reloader / hot reload) or if Alpine is started twice.
                     if (this._initialized) return;
@@ -193,8 +319,20 @@
                         { color: this.color, strokeWidth: this.strokeWidth }
                     );
 
-                    // Initialize SyncManager
-                    this.syncManager = new SyncManager(this.whiteboard, this.documentId);
+                    // Initialize SyncManager with user info
+                    this.syncManager = new SyncManager(this.whiteboard, this.documentId, {
+                        userName: this.userName
+                    });
+
+                    // Get user color from whiteboard
+                    this.userColor = this.whiteboard.localUserColor;
+
+                    // Update remote users list periodically
+                    setInterval(() => {
+                        if (this.whiteboard) {
+                            this.remoteUsers = this.whiteboard.getRemoteUsers();
+                        }
+                    }, 500);
 
                     // Watch for zoom changes
                     const updateZoom = () => {
@@ -271,6 +409,40 @@
                     }
                     // Reset input so the same file can be selected again
                     event.target.value = '';
+                },
+
+                async setUserName() {
+                    const name = this.userNameInput.trim();
+                    if (!name) return;
+                    
+                    this.userName = name;
+                    this.userNameInput = '';
+                    localStorage.setItem('whiteboardUserName', name);
+                    
+                    // If whiteboard is already initialized, just update the name
+                    if (this.syncManager) {
+                        this.syncManager.setUserName(name);
+                    } else {
+                        // Start the whiteboard now that we have a name
+                        await this.startWhiteboard();
+                    }
+                },
+
+                toggleUserPanel() {
+                    this.userPanelExpanded = !this.userPanelExpanded;
+                },
+
+                editUserName() {
+                    // Clear stored name and show the name entry modal
+                    this.userNameInput = this.userName;
+                    this.userName = '';
+                    localStorage.removeItem('whiteboardUserName');
+                },
+
+                jumpToUser(userId) {
+                    if (this.whiteboard.jumpToUser(userId)) {
+                        this.zoom = this.whiteboard.zoom;
+                    }
                 }
             };
         }

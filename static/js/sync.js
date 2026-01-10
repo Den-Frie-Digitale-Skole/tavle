@@ -10,14 +10,27 @@ class SyncManager {
         this.socket = null;
         this.connected = false;
 
-        // Throttling
+        // User identity
+        this.userId = options.userId || this._generateUserId();
+        this.userName = options.userName || 'Anonymous';
+
+        // Throttling for stroke points
         this.throttleInterval = options.throttleInterval || 16;  // ~60fps
         this.lastEmitTime = 0;
         this.pendingPoint = null;
         this.throttleTimer = null;
 
+        // Cursor throttling (less frequent than strokes)
+        this.cursorThrottleInterval = 50;  // ~20fps for cursors
+        this.lastCursorEmitTime = 0;
+        this.pendingCursor = null;
+        this.cursorThrottleTimer = null;
+
         // Server URL
         this.serverUrl = options.serverUrl || window.location.origin;
+
+        // Setup whiteboard user
+        this.whiteboard.setLocalUser(this.userId, this.userName);
 
         // Bind whiteboard callbacks
         this._bindWhiteboardCallbacks();
@@ -62,7 +75,10 @@ class SyncManager {
 
     disconnect() {
         if (this.socket) {
-            this.socket.emit('leave', { documentId: this.documentId });
+            this.socket.emit('leave', { 
+                documentId: this.documentId,
+                userId: this.userId
+            });
             this.socket.disconnect();
             this.socket = null;
             this.connected = false;
@@ -71,8 +87,17 @@ class SyncManager {
 
     joinRoom() {
         if (this.socket && this.connected) {
-            this.socket.emit('join', { documentId: this.documentId });
+            this.socket.emit('join', { 
+                documentId: this.documentId,
+                userId: this.userId,
+                userName: this.userName
+            });
         }
+    }
+
+    setUserName(name) {
+        this.userName = name;
+        this.whiteboard.setLocalUser(this.userId, name);
     }
 
     // =========================================================================
@@ -151,8 +176,17 @@ class SyncManager {
                 ...data
             });
         };
-    }
 
+        // Cursor move (throttled)
+        this.whiteboard.onCursorMove = (cursor) => {
+            this._emitCursorThrottled({
+                documentId: this.documentId,
+                userId: this.userId,
+                userName: this.userName,
+                cursor: cursor
+            });
+        };
+    }
     // =========================================================================
     // Socket Event Handlers (Inbound)
     // =========================================================================
@@ -202,6 +236,28 @@ class SyncManager {
         this.socket.on('remote-image-delete', (data) => {
             this.whiteboard.applyRemoteImageDelete(data);
         });
+
+        // Remote cursor update
+        this.socket.on('remote-cursor', (data) => {
+            this.whiteboard.updateRemoteUser(data.userId, {
+                name: data.userName,
+                cursor: data.cursor
+            });
+        });
+
+        // User joined
+        this.socket.on('user-joined', (data) => {
+            console.log('User joined:', data.userName);
+            this.whiteboard.updateRemoteUser(data.userId, {
+                name: data.userName
+            });
+        });
+
+        // User left
+        this.socket.on('user-left', (data) => {
+            console.log('User left:', data.userId);
+            this.whiteboard.removeRemoteUser(data.userId);
+        });
     }
 
     // =========================================================================
@@ -247,6 +303,48 @@ class SyncManager {
             this.pendingPoint = null;
             this.lastEmitTime = Date.now();
         }
+    }
+
+    _emitCursorThrottled(data) {
+        const now = Date.now();
+
+        if (now - this.lastCursorEmitTime >= this.cursorThrottleInterval) {
+            this._emit('cursor-move', data);
+            this.lastCursorEmitTime = now;
+            this.pendingCursor = null;
+        } else {
+            this.pendingCursor = data;
+
+            if (!this.cursorThrottleTimer) {
+                const delay = this.cursorThrottleInterval - (now - this.lastCursorEmitTime);
+                this.cursorThrottleTimer = setTimeout(() => {
+                    this._flushCursorThrottled();
+                }, delay);
+            }
+        }
+    }
+
+    _flushCursorThrottled() {
+        if (this.cursorThrottleTimer) {
+            clearTimeout(this.cursorThrottleTimer);
+            this.cursorThrottleTimer = null;
+        }
+
+        if (this.pendingCursor) {
+            this._emit('cursor-move', this.pendingCursor);
+            this.pendingCursor = null;
+            this.lastCursorEmitTime = Date.now();
+        }
+    }
+
+    _generateUserId() {
+        // Try to get from localStorage for persistence across sessions
+        let oduserId = localStorage.getItem('whiteboardUserId');
+        if (!oduserId) {
+            oduserId = 'user-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('whiteboardUserId', oduserId);
+        }
+        return oduserId;
     }
 
     // =========================================================================

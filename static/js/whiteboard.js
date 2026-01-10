@@ -56,6 +56,17 @@ class Whiteboard {
         this.onImageAdd = null;
         this.onImageUpdate = null;
         this.onImageDelete = null;
+        this.onCursorMove = null;  // Cursor position broadcast
+
+        // Remote users and cursors
+        this.remoteUsers = new Map();  // oduserId -> { name, color, cursor: {x, y}, lastSeen }
+        this.localUserId = null;
+        this.localUserName = null;
+        this.localUserColor = null;
+        this.cursorColors = [
+            '#e74c3c', '#3498db', '#2ecc71', '#9b59b6', 
+            '#f39c12', '#1abc9c', '#e91e63', '#00bcd4'
+        ];
 
         // History for undo/redo
         this.history = [];  // Array of action objects
@@ -340,6 +351,11 @@ class Whiteboard {
         e.preventDefault();
         const point = this._getCanvasPoint(e);
         const clientPoint = { x: e.clientX, y: e.clientY };
+
+        // Broadcast cursor position (throttled)
+        if (this.onCursorMove) {
+            this.onCursorMove({ x: point.x, y: point.y });
+        }
 
         if (this.isPanning) {
             const dx = clientPoint.x - this.lastPointer.x;
@@ -1042,6 +1058,70 @@ class Whiteboard {
             if (image) {
                 this._renderImage(image, this.activeCtx, { selected: true });
             }
+        });
+
+        // Draw remote user cursors
+        this._renderRemoteCursors();
+    }
+
+    _renderRemoteCursors() {
+        const ctx = this.activeCtx;
+        const now = Date.now();
+        
+        this.remoteUsers.forEach((user, oduserId) => {
+            // Skip stale cursors (not updated in 10 seconds)
+            if (now - user.lastSeen > 10000) return;
+            
+            if (!user.cursor) return;
+            
+            // Transform canvas coordinates to screen coordinates
+            const screenX = user.cursor.x * this.zoom + this.pan.x;
+            const screenY = user.cursor.y * this.zoom + this.pan.y;
+            
+            // Skip if cursor is off screen
+            if (screenX < -50 || screenX > this.activeCanvas.width + 50 ||
+                screenY < -50 || screenY > this.activeCanvas.height + 50) {
+                return;
+            }
+            
+            // Draw cursor pointer
+            ctx.save();
+            ctx.translate(screenX, screenY);
+            
+            // Cursor shape (arrow-like pointer)
+            ctx.fillStyle = user.color;
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(0, 18);
+            ctx.lineTo(5, 14);
+            ctx.lineTo(9, 22);
+            ctx.lineTo(12, 21);
+            ctx.lineTo(8, 13);
+            ctx.lineTo(14, 13);
+            ctx.closePath();
+            
+            ctx.stroke();
+            ctx.fill();
+            
+            // Draw name label
+            const name = user.name || 'Anonymous';
+            ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
+            const textWidth = ctx.measureText(name).width;
+            
+            // Label background
+            ctx.fillStyle = user.color;
+            ctx.beginPath();
+            ctx.roundRect(16, 16, textWidth + 10, 20, 4);
+            ctx.fill();
+            
+            // Label text
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(name, 21, 30);
+            
+            ctx.restore();
         });
     }
 
@@ -1778,6 +1858,87 @@ class Whiteboard {
             };
             img.src = image.data;
         });
+    }
+
+    // =========================================================================
+    // Remote User / Cursor Management
+    // =========================================================================
+
+    setLocalUser(userId, name) {
+        this.localUserId = userId;
+        this.localUserName = name;
+        // Assign a consistent color based on userId
+        const colorIndex = Math.abs(this._hashCode(userId)) % this.cursorColors.length;
+        this.localUserColor = this.cursorColors[colorIndex];
+    }
+
+    updateRemoteUser(userId, data) {
+        if (userId === this.localUserId) return;  // Ignore self
+        
+        let user = this.remoteUsers.get(userId);
+        if (!user) {
+            const colorIndex = Math.abs(this._hashCode(userId)) % this.cursorColors.length;
+            user = {
+                name: data.name || 'Anonymous',
+                color: this.cursorColors[colorIndex],
+                cursor: null,
+                lastSeen: Date.now()
+            };
+            this.remoteUsers.set(userId, user);
+        }
+        
+        if (data.name) user.name = data.name;
+        if (data.cursor) user.cursor = data.cursor;
+        user.lastSeen = Date.now();
+        
+        this._redrawActive();
+    }
+
+    removeRemoteUser(userId) {
+        this.remoteUsers.delete(userId);
+        this._redrawActive();
+    }
+
+    getRemoteUsers() {
+        const users = [];
+        const now = Date.now();
+        this.remoteUsers.forEach((user, oduserId) => {
+            if (now - user.lastSeen < 10000) {
+                users.push({
+                    oduserId,
+                    name: user.name,
+                    color: user.color,
+                    cursor: user.cursor
+                });
+            }
+        });
+        return users;
+    }
+
+    jumpToUser(userId) {
+        const user = this.remoteUsers.get(userId);
+        if (!user || !user.cursor) return false;
+        
+        // Center the view on the user's cursor position
+        const centerX = this.activeCanvas.width / 2;
+        const centerY = this.activeCanvas.height / 2;
+        
+        this.pan.x = centerX - user.cursor.x * this.zoom;
+        this.pan.y = centerY - user.cursor.y * this.zoom;
+        
+        this._redrawBase();
+        this._redrawActive();
+        return true;
+    }
+
+    _hashCode(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+        }
+        return hash;
     }
 
     _generateId(prefix = 'stroke') {
