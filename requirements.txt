@@ -6,3 +6,9 @@ peewee==3.17.0
 eventlet==0.34.2
 python-socketio==5.10.0
 requests==2.31.0
+
+# PostgreSQL support (production)
+psycopg2-binary==2.9.9
+
+# Production WSGI server
+gunicorn==21.2.0

@@ -6,21 +6,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Collaborative Whiteboard</title>
 
-    <!-- Tailwind CSS (CDN) -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tailwind CSS (local) -->
+    <script src="/static/js/vendor/tailwind.js"></script>
 
     <!-- Whiteboard CSS -->
     <link rel="stylesheet" href="/static/css/whiteboard.css">
 
-    <!-- Alpine.js -->
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Alpine.js (local) -->
+    <script defer src="/static/js/vendor/alpine.min.js"></script>
 
-    <!-- Socket.IO -->
-    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <!-- Socket.IO (local) -->
+    <script src="/static/js/vendor/socket.io.min.js"></script>
 
-    <!-- Perfect Freehand - Load via ES module and expose globally -->
+    <!-- Perfect Freehand - Load via ES module (local) -->
     <script type="module">
-        import { getStroke } from 'https://esm.sh/perfect-freehand@1.2.2';
+        import { getStroke } from '/static/js/vendor/perfect-freehand.mjs';
         window.getStroke = getStroke;
         window.dispatchEvent(new Event('perfect-freehand-ready'));
     </script>
@@ -282,7 +282,7 @@
                 loading: true,
 
                 // User state
-                userName: localStorage.getItem('whiteboardUserName') || '',
+                userName: '',  // Will be set in init() with sanitization
                 userNameInput: '',
                 userColor: '#3b82f6',
                 remoteUsers: [],
@@ -298,6 +298,16 @@
                 colors: ['#000000', '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6'],
 
                 async init() {
+                    // Load and sanitize stored user name
+                    const storedName = localStorage.getItem('whiteboardUserName');
+                    if (storedName) {
+                        this.userName = this.sanitizeUserName(storedName);
+                        // Update storage if sanitization changed the name
+                        if (this.userName !== storedName) {
+                            localStorage.setItem('whiteboardUserName', this.userName);
+                        }
+                    }
+
                     // Wait for perfect-freehand to be loaded
                     if (typeof getStroke !== 'function') {
                         await new Promise(resolve => {
@@ -419,8 +429,23 @@
                     event.target.value = '';
                 },
 
+                // Sanitize user name to prevent XSS (defense in depth)
+                sanitizeUserName(name) {
+                    if (!name) return '';
+                    // Remove HTML-like content and control characters
+                    return name
+                        .replace(/[<>]/g, '')           // Remove angle brackets
+                        .replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, '') // Only printable chars
+                        .trim()
+                        .substring(0, 50);              // Max 50 characters
+                },
+
                 async setUserName() {
-                    const name = this.userNameInput.trim();
+                    let name = this.userNameInput.trim();
+                    if (!name) return;
+                    
+                    // Sanitize the name
+                    name = this.sanitizeUserName(name);
                     if (!name) return;
                     
                     this.userName = name;

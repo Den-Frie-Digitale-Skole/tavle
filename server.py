@@ -1,21 +1,120 @@
 """
 Main Flask application with SocketIO for real-time collaboration.
+Security-hardened version with input validation, session management, and rate limiting.
 """
 import os
-from flask import Flask, render_template, redirect, url_for, abort
-from flask_socketio import SocketIO, join_room, leave_room, emit
+import logging
+from logging.handlers import RotatingFileHandler
+from flask import Flask, render_template, abort, jsonify
+from flask_socketio import SocketIO
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from api import BoardResource
 
-from models import init_db, get_or_create_document, get_document_by_token, Stroke, Document, Image
+from models import init_db, get_document_by_token, open_db_connection, close_db_connection, get_pool_status
 from api import api_bp
+from socketio_handlers import register_socketio_handlers
 
+# =============================================================================
+# Logging Setup
+# =============================================================================
+
+def setup_logging(app_instance):
+    """
+    Configure production logging with file rotation.
+    Creates separate logs for application and security events.
+    """
+    # Create logs directory
+    log_dir = os.environ.get('LOG_DIR', 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Determine log level from environment
+    log_level = getattr(logging, os.environ.get('LOG_LEVEL', 'INFO').upper(), logging.INFO)
+    
+    # Configure root logger
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s %(levelname)s [%(name)s] %(message)s'
+    )
+    
+    # Application log with rotation (10MB, 5 backups)
+    app_handler = RotatingFileHandler(
+        os.path.join(log_dir, 'whiteboard.log'),
+        maxBytes=10 * 1024 * 1024,  # 10MB
+        backupCount=5
+    )
+    app_handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s [%(name)s] %(message)s'
+    ))
+    app_handler.setLevel(log_level)
+    app_instance.logger.addHandler(app_handler)
+    
+    # Security log with rotation (10MB, 10 backups - keep more history)
+    security_handler = RotatingFileHandler(
+        os.path.join(log_dir, 'security.log'),
+        maxBytes=10 * 1024 * 1024,  # 10MB
+        backupCount=10
+    )
+    security_handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s [%(name)s] %(message)s'
+    ))
+    security_handler.setLevel(logging.WARNING)
+    
+    # Create security logger
+    security_logger = logging.getLogger('security')
+    security_logger.addHandler(security_handler)
+    security_logger.setLevel(logging.WARNING)
+    
+    # Also add console handler for security events in production
+    if os.environ.get('FLASK_ENV') == 'production':
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.WARNING)
+        console_handler.setFormatter(logging.Formatter(
+            '%(asctime)s SECURITY %(levelname)s %(message)s'
+        ))
+        security_logger.addHandler(console_handler)
+    
+    return security_logger
+
+
+logger = logging.getLogger(__name__)
+
+# =============================================================================
 # Initialize Flask app
+# =============================================================================
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
-# Initialize rate limiter
+# Setup logging (creates security_logger as module-level for import by other modules)
+security_logger = setup_logging(app)
+
+# =============================================================================
+# Production Security Checks
+# =============================================================================
+
+def check_production_config():
+    """Ensure production configuration is secure."""
+    is_production = (
+        os.environ.get('FLASK_ENV') == 'production' or
+        os.environ.get('ENVIRONMENT') == 'production'
+    )
+    
+    if is_production:
+        secret_key = os.environ.get('SECRET_KEY', '')
+        if not secret_key or secret_key == 'dev-secret-key-change-in-production':
+            raise RuntimeError("SECRET_KEY must be set to a secure value in production!")
+        
+        admin_token = os.environ.get('ADMIN_API_TOKEN', '')
+        if not admin_token or admin_token == 'dev-admin-token-change-in-production':
+            raise RuntimeError("ADMIN_API_TOKEN must be set to a secure value in production!")
+        
+        if app.debug:
+            logger.warning("Debug mode is enabled - should be disabled in production!")
+
+# =============================================================================
+# Initialize rate limiter (HTTP routes)
+# =============================================================================
+
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
@@ -23,12 +122,73 @@ limiter = Limiter(
     storage_uri="memory://",
 )
 
-# Initialize SocketIO with eventlet for async support
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+# =============================================================================
+# Initialize SocketIO with CORS restriction
+# =============================================================================
 
+# Get allowed origins from environment (comma-separated), default to * for dev
+ALLOWED_ORIGINS = os.environ.get('ALLOWED_ORIGINS', '*')
+if ALLOWED_ORIGINS != '*':
+    ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS.split(',')]
+
+socketio = SocketIO(
+    app,
+    cors_allowed_origins=ALLOWED_ORIGINS,
+    async_mode='eventlet',
+    ping_timeout=60,
+    ping_interval=25
+)
+
+# Register all SocketIO event handlers
+register_socketio_handlers(socketio)
+
+# =============================================================================
+# Security Headers
+# =============================================================================
+
+# Content Security Policy - now using local vendor files, much stricter CSP possible
+CSP_POLICY = os.environ.get('CSP_POLICY', (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "  # unsafe-eval needed for Tailwind JIT
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: blob:; "
+    "connect-src 'self' ws: wss:; "
+    "font-src 'self'; "
+    "frame-ancestors 'self';"
+))
+
+
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses."""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Content-Security-Policy'] = CSP_POLICY
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+    return response
+
+# =============================================================================
+# Database Connection Management (for connection pooling)
+# =============================================================================
+
+@app.before_request
+def before_request():
+    """Open database connection before each request."""
+    open_db_connection()
+
+
+@app.teardown_request
+def teardown_request(exception=None):
+    """Close database connection after each request (returns to pool)."""
+    close_db_connection()
+
+# =============================================================================
 # Register API blueprint
-app.register_blueprint(api_bp)
+# =============================================================================
 
+app.register_blueprint(api_bp)
 
 # =============================================================================
 # Public Routes
@@ -39,7 +199,6 @@ app.register_blueprint(api_bp)
 def index():
     """Landing page."""
     return render_template('landing.html')
-
 
 
 @app.route('/board/<token>')
@@ -56,320 +215,49 @@ def board(token):
 @app.route('/get/<token>')
 @limiter.limit("30 per minute")
 def get_document(token):
-    """Redirect to the whiteboard page for the document with the given token."""
+    """Get document data for rendering whiteboard (without exposing sensitive data)."""
     doc = get_document_by_token(token)
     
     if not doc:
-        print(f'Document not found for token: {token}')
+        logger.info(f'Document not found for token: {token[:10]}...')
         abort(404)
 
-    return doc.to_dict()
-
-# =============================================================================
-# Socket Events
-# =============================================================================
-
-def get_doc_from_token(token):
-    """Helper to get document from token, returns (doc, doc_id) or (None, None)."""
-    if not token:
-        return None, None
-    doc = get_document_by_token(token)
-    if not doc:
-        return None, None
-    return doc, doc.id
+    # Return sanitized data - remove sensitive fields
+    result = doc.to_dict()
+    result.pop('access_token', None)  # Don't expose token in response
+    result.pop('id', None)  # Don't expose internal ID
+    return result
 
 
-@socketio.on('connect')
-def handle_connect():
-    """Handle client connection."""
-    print('Client connected')
-
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    """Handle client disconnection."""
-    print('Client disconnected')
-
-
-@socketio.on('join')
-def handle_join(data):
+@app.route('/health')
+@limiter.exempt
+def health_check():
     """
-    Join a document room for real-time collaboration.
-    data: { tokenId: string, userId: string, userName: string }
+    Health check endpoint for monitoring.
+    Returns database pool status in production.
     """
-    token = data.get('tokenId')
-    user_id = data.get('userId')
-    user_name = data.get('userName', 'Anonymous')
+    pool_status = get_pool_status()
     
-    doc, doc_id = get_doc_from_token(token)
-    if not doc:
-        emit('error', {'message': 'Invalid token'})
-        return
-    
-    # Use token as room ID (more secure than doc_id)
-    join_room(token)
-    emit('joined', {'tokenId': token, 'message': f'Joined room'})
-    print(f'Client {user_name} ({user_id}) joined room: {token[:10]}...')
-    
-    # Notify others that a user joined
-    if user_id:
-        emit('user-joined', {
-            'userId': user_id,
-            'userName': user_name
-        }, to=token, include_self=False)
-
-
-@socketio.on('leave')
-def handle_leave(data):
-    """
-    Leave a document room.
-    data: { tokenId: string, userId: string }
-    """
-    token = data.get('tokenId')
-    user_id = data.get('userId')
-    
-    if token:
-        leave_room(token)
-        print(f'Client {user_id} left room: {token[:10]}...')
-        
-        # Notify others that a user left
-        if user_id:
-            emit('user-left', {
-                'userId': user_id
-            }, to=token, include_self=False)
-
-
-@socketio.on('cursor-move')
-def handle_cursor_move(data):
-    """
-    Broadcast cursor position to other users in the room.
-    data: { tokenId, userId, userName, cursor: {x, y} }
-    """
-    token = data.get('tokenId')
-    if token:
-        emit('remote-cursor', data, to=token, include_self=False)
-
-
-@socketio.on('stroke-point')
-def handle_stroke_point(data):
-    """
-    Broadcast a stroke point to other users in the room.
-    data: { tokenId, point: {x, y, pressure}, color, strokeWidth, strokeId }
-    """
-    token = data.get('tokenId')
-    if token:
-        emit('remote-stroke-point', data, to=token, include_self=False)
-
-
-@socketio.on('stroke-complete')
-def handle_stroke_complete(data):
-    """
-    Broadcast completed stroke and persist to database.
-    data: { tokenId, strokeId, points: [{x, y, pressure}], color, strokeWidth, transform }
-    """
-    token = data.get('tokenId')
-    doc, doc_id = get_doc_from_token(token)
-    
-    if doc:
-        # Persist stroke to database
-        try:
-            stroke = Stroke.create_new(
-                document_id=doc_id,
-                points=data.get('points', []),
-                color=data.get('color', '#000000'),
-                stroke_width=data.get('strokeWidth', 4.0),
-                transform=data.get('transform')
-            )
-            stroke.id = data.get('strokeId', stroke.id)
-            stroke.save(force_insert=True)
-            
-            # Update document
-            doc.save()
-        except Exception as e:
-            print(f'Error saving stroke: {e}')
-        
-        # Broadcast to others
-        emit('remote-stroke-complete', data, to=token, include_self=False)
-
-
-@socketio.on('stroke-update')
-def handle_stroke_update(data):
-    """
-    Broadcast stroke update (move/transform) and persist.
-    data: { tokenId, strokeId, transform: {x, y, scale} }
-    """
-    token = data.get('tokenId')
-    stroke_id = data.get('strokeId')
-    doc, doc_id = get_doc_from_token(token)
-    
-    if doc and stroke_id:
-        # Update in database
-        try:
-            stroke = Stroke.get((Stroke.id == stroke_id) & (Stroke.document_id == doc_id))
-            stroke.set_transform(data.get('transform', {'x': 0, 'y': 0, 'scale': 1}))
-            stroke.save()
-        except Stroke.DoesNotExist:
-            print(f'Stroke not found: {stroke_id}')
-        except Exception as e:
-            print(f'Error updating stroke: {e}')
-        
-        # Broadcast to others
-        emit('remote-stroke-update', data, to=token, include_self=False)
-
-
-@socketio.on('stroke-delete')
-def handle_stroke_delete(data):
-    """
-    Broadcast stroke deletion and remove from database.
-    data: { tokenId, strokeId } or { tokenId, strokeIds: [] }
-    """
-    token = data.get('tokenId')
-    stroke_ids = data.get('strokeIds', [])
-    doc, doc_id = get_doc_from_token(token)
-    
-    # Support single strokeId for backwards compatibility
-    if not stroke_ids and data.get('strokeId'):
-        stroke_ids = [data.get('strokeId')]
-    
-    if doc and stroke_ids:
-        # Delete from database
-        try:
-            Stroke.delete().where(
-                (Stroke.id.in_(stroke_ids)) & (Stroke.document_id == doc_id)
-            ).execute()
-        except Exception as e:
-            print(f'Error deleting strokes: {e}')
-        
-        # Broadcast to others
-        emit('remote-stroke-delete', {'tokenId': token, 'strokeIds': stroke_ids}, 
-             to=token, include_self=False)
-
-
-@socketio.on('clear')
-def handle_clear(data):
-    """
-    Clear all strokes from a document.
-    data: { tokenId }
-    """
-    token = data.get('tokenId')
-    doc, doc_id = get_doc_from_token(token)
-    
-    if doc:
-        # Clear from database
-        try:
-            Stroke.delete().where(Stroke.document_id == doc_id).execute()
-            Image.delete().where(Image.document_id == doc_id).execute()
-        except Exception as e:
-            print(f'Error clearing strokes: {e}')
-        
-        # Broadcast to others
-        emit('remote-clear', {'tokenId': token}, to=token, include_self=False)
-
-
-@socketio.on('image-add')
-def handle_image_add(data):
-    """
-    Broadcast image addition and persist to database.
-    data: { tokenId, imageId, data, x, y, width, height, transform }
-    """
-    token = data.get('tokenId')
-    doc, doc_id = get_doc_from_token(token)
-    
-    if doc:
-        # Persist image to database
-        try:
-            image = Image.create_new(
-                document_id=doc_id,
-                data=data.get('data', ''),
-                x=data.get('x', 0),
-                y=data.get('y', 0),
-                width=data.get('width', 200),
-                height=data.get('height', 200),
-                transform=data.get('transform')
-            )
-            image.id = data.get('imageId', image.id)
-            image.save(force_insert=True)
-            
-            # Update document
-            doc.save()
-        except Exception as e:
-            print(f'Error saving image: {e}')
-        
-        # Broadcast to others
-        emit('remote-image-add', data, to=token, include_self=False)
-
-
-@socketio.on('image-update')
-def handle_image_update(data):
-    """
-    Broadcast image update (move/transform) and persist.
-    data: { tokenId, imageId, transform: {x, y, scale}, x, y, width, height }
-    """
-    token = data.get('tokenId')
-    image_id = data.get('imageId')
-    doc, doc_id = get_doc_from_token(token)
-    
-    if doc and image_id:
-        # Update in database
-        try:
-            image = Image.get((Image.id == image_id) & (Image.document_id == doc_id))
-            if data.get('transform'):
-                image.set_transform(data.get('transform'))
-            if data.get('x') is not None:
-                image.x = data['x']
-            if data.get('y') is not None:
-                image.y = data['y']
-            if data.get('width') is not None:
-                image.width = data['width']
-            if data.get('height') is not None:
-                image.height = data['height']
-            image.save()
-        except Image.DoesNotExist:
-            print(f'Image not found: {image_id}')
-        except Exception as e:
-            print(f'Error updating image: {e}')
-        
-        # Broadcast to others
-        emit('remote-image-update', data, to=token, include_self=False)
-
-
-@socketio.on('image-delete')
-def handle_image_delete(data):
-    """
-    Broadcast image deletion and remove from database.
-    data: { tokenId, imageId } or { tokenId, imageIds: [] }
-    """
-    token = data.get('tokenId')
-    image_ids = data.get('imageIds', [])
-    doc, doc_id = get_doc_from_token(token)
-    
-    # Support single imageId for backwards compatibility
-    if not image_ids and data.get('imageId'):
-        image_ids = [data.get('imageId')]
-    
-    if doc and image_ids:
-        # Delete from database
-        try:
-            Image.delete().where(
-                (Image.id.in_(image_ids)) & (Image.document_id == doc_id)
-            ).execute()
-        except Exception as e:
-            print(f'Error deleting images: {e}')
-        
-        # Broadcast to others
-        emit('remote-image-delete', {'tokenId': token, 'imageIds': image_ids}, 
-             to=token, include_self=False)
-
+    return jsonify({
+        'status': 'healthy',
+        'database': 'postgresql' if pool_status else 'sqlite',
+        'pool': pool_status,
+    })
 
 # =============================================================================
 # Application Entry Point
 # =============================================================================
 
 if __name__ == '__main__':
+    # Check production configuration
+    check_production_config()
+    
     # Initialize database
     init_db()
     
+    # Log startup
+    logger.info('Starting whiteboard server on http://localhost:5050')
+    logger.info(f'CORS allowed origins: {ALLOWED_ORIGINS}')
+    
     # Run with SocketIO
-    print('Starting whiteboard server on http://localhost:5050')
     socketio.run(app, host='0.0.0.0', port=5050, debug=True)
-

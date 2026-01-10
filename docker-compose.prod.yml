@@ -1,0 +1,43 @@
+# =============================================================================
+# Collaborative Whiteboard - Production Docker Compose Override
+# =============================================================================
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# =============================================================================
+
+services:
+  app:
+    environment:
+      - FLASK_ENV=production
+    labels:
+      # Traefik labels (uncomment if using Traefik)
+      # - "traefik.enable=true"
+      # - "traefik.http.routers.whiteboard.rule=Host(`whiteboard.example.com`)"
+      # - "traefik.http.routers.whiteboard.entrypoints=web"
+      # - "traefik.http.services.whiteboard.loadbalancer.server.port=5050"
+      # WebSocket sticky sessions
+      # - "traefik.http.services.whiteboard.loadbalancer.sticky.cookie=true"
+      # - "traefik.http.services.whiteboard.loadbalancer.sticky.cookie.name=whiteboard_sticky"
+      - "com.whiteboard.environment=production"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  db:
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M

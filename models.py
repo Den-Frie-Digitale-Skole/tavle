@@ -1,6 +1,7 @@
 """
 Peewee ORM models for the collaborative whiteboard.
 SQLite-first design with easy PostgreSQL migration support.
+Includes connection pooling for production PostgreSQL.
 """
 import os
 import json
@@ -8,28 +9,57 @@ import uuid
 import secrets
 from datetime import datetime
 from peewee import (
-    Model, SqliteDatabase, PostgresqlDatabase,
+    Model, SqliteDatabase,
     CharField, DateTimeField, FloatField, TextField, ForeignKeyField, BooleanField
 )
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Database configuration - SQLite by default, PostgreSQL via env var
+# =============================================================================
+# Database Configuration
+# =============================================================================
+
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
+# Connection pool settings (via environment variables)
+DB_MAX_CONNECTIONS = int(os.environ.get('DB_MAX_CONNECTIONS', '32'))
+DB_STALE_TIMEOUT = int(os.environ.get('DB_STALE_TIMEOUT', '300'))  # 5 minutes
+DB_TIMEOUT = int(os.environ.get('DB_TIMEOUT', '30'))  # 30 seconds
+
 if DATABASE_URL and DATABASE_URL.startswith('postgres'):
-    # PostgreSQL configuration
-    from playhouse.db_url import connect
-    db = connect(DATABASE_URL)
+    # PostgreSQL with connection pooling for production
+    from playhouse.pool import PooledPostgresqlExtDatabase
+    from urllib.parse import urlparse
+    
+    # Parse DATABASE_URL
+    parsed = urlparse(DATABASE_URL)
+    
+    db = PooledPostgresqlExtDatabase(
+        parsed.path[1:],  # Remove leading '/' from path
+        user=parsed.username,
+        password=parsed.password,
+        host=parsed.hostname,
+        port=parsed.port or 5432,
+        max_connections=DB_MAX_CONNECTIONS,
+        stale_timeout=DB_STALE_TIMEOUT,
+        timeout=DB_TIMEOUT,
+        autorollback=True,  # Auto-rollback on connection errors
+    )
+    
+    logger.info(f"PostgreSQL connection pool initialized: max={DB_MAX_CONNECTIONS}, "
+                f"stale_timeout={DB_STALE_TIMEOUT}s, timeout={DB_TIMEOUT}s")
 else:
-    # SQLite configuration (default)
+    # SQLite configuration (development/testing)
     db = SqliteDatabase('whiteboard.db', pragmas={
         'journal_mode': 'wal',
         'cache_size': -1 * 64000,  # 64MB
         'foreign_keys': 1,
         'ignore_check_constraints': 0,
     })
+    
+    if DATABASE_URL:
+        logger.warning(f"DATABASE_URL set but not PostgreSQL: {DATABASE_URL[:20]}...")
 
 
 class BaseModel(Model):
@@ -216,3 +246,44 @@ def get_or_create_document(doc_id):
 def get_document_by_token(token):
     """Get document by access token."""
     return Document.get_by_token(token)
+
+
+# =============================================================================
+# Connection Management (for request lifecycle)
+# =============================================================================
+
+def open_db_connection():
+    """
+    Open a database connection (for request start).
+    For pooled connections, this acquires from the pool.
+    """
+    if db.is_closed():
+        db.connect(reuse_if_open=True)
+
+
+def close_db_connection():
+    """
+    Close database connection (for request end).
+    For pooled connections, this returns connection to the pool.
+    """
+    if not db.is_closed():
+        db.close()
+
+
+def get_pool_status():
+    """
+    Get connection pool status (PostgreSQL only).
+    Returns None for SQLite.
+    """
+    if hasattr(db, '_in_use') and hasattr(db, '_connections'):
+        return {
+            'in_use': len(db._in_use),
+            'available': len(db._connections),
+            'max_connections': DB_MAX_CONNECTIONS,
+        }
+    return None
+
+
+def is_postgresql():
+    """Check if using PostgreSQL."""
+    return DATABASE_URL and DATABASE_URL.startswith('postgres')
