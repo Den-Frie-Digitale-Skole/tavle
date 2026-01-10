@@ -24,6 +24,13 @@
         window.getStroke = getStroke;
         window.dispatchEvent(new Event('perfect-freehand-ready'));
     </script>
+
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css"
+    />
+
 </head>
 
 <body class="bg-gray-100 overflow-hidden">
@@ -34,143 +41,186 @@
         <canvas x-ref="baseCanvas" class="whiteboard-canvas whiteboard-canvas--base"></canvas>
         <canvas x-ref="activeCanvas" class="whiteboard-canvas whiteboard-canvas--active"></canvas>
 
-        <!-- Floating Tool Palette -->
+        <!-- Floating Tool Palette - Excalidraw Style -->
         <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50">
-            <div
-                class="flex items-center gap-2 px-4 py-3 bg-white/95 backdrop-blur rounded-2xl shadow-lg border border-gray-200">
+            <div class="flex items-center gap-1 px-2 py-2 bg-white rounded-xl shadow-lg border border-gray-200/80">
 
-                <!-- Mode Buttons -->
-                <div class="flex items-center gap-1 pr-3 border-r border-gray-200">
+                <!-- Tool Selection -->
+                <div class="flex items-center gap-0.5 px-1">
                     <button @click="setMode('draw')"
-                        :class="mode === 'draw' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'"
-                        class="p-2 rounded-lg transition-colors" title="Draw (D)">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                        </svg>
+                        :class="mode === 'draw' ? 'bg-violet-100 text-violet-600' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 rounded-lg transition-all duration-150" title="Draw (D)">
+                        <i class="ph ph-pencil-simple text-xl"></i>
                     </button>
                     <button @click="setMode('erase')"
-                        :class="mode === 'erase' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'"
-                        class="p-2 rounded-lg transition-colors" title="Eraser (E)">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
+                        :class="mode === 'erase' ? 'bg-violet-100 text-violet-600' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 rounded-lg transition-all duration-150" title="Eraser (E)">
+                        <i class="ph ph-eraser text-xl"></i>
                     </button>
                     <button @click="setMode('select')"
-                        :class="mode === 'select' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'"
-                        class="p-2 rounded-lg transition-colors" title="Select (V)">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-                        </svg>
+                        :class="mode === 'select' ? 'bg-violet-100 text-violet-600' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 rounded-lg transition-all duration-150" title="Select (V)">
+                        <i class="ph ph-cursor text-xl"></i>
                     </button>
                     <button @click="setMode('pan')"
-                        :class="mode === 'pan' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'"
-                        class="p-2 rounded-lg transition-colors" title="Pan (Space)">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11" />
-                        </svg>
+                        :class="mode === 'pan' ? 'bg-violet-100 text-violet-600' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 rounded-lg transition-all duration-150" title="Pan (H)">
+                        <i class="ph ph-hand text-xl"></i>
                     </button>
                 </div>
 
-                <!-- Color Picker -->
-                <div class="flex items-center gap-2 px-2">
-                    <template x-for="c in colors" :key="c">
-                        <button @click="setColor(c)" :style="{ backgroundColor: c }"
-                            :class="color === c ? 'ring-2 ring-offset-2 ring-blue-500 scale-110' : ''"
-                            class="w-6 h-6 rounded-full border border-gray-300 transition-transform hover:scale-110">
+                <!-- Divider -->
+                <div class="w-px h-8 bg-gray-200 mx-1"></div>
+
+                <!-- Stroke Color -->
+                <div class="flex items-center gap-1 px-1">
+                    <div class="relative" x-data="{ open: false }">
+                        <button @click="open = !open" 
+                            class="w-8 h-8 rounded-lg border-2 border-gray-200 hover:border-gray-300 transition-colors flex items-center justify-center"
+                            :style="{ backgroundColor: color }">
+                        </button>
+                        <!-- Color Dropdown -->
+                        <div x-show="open" @click.outside="open = false" x-transition
+                            class="absolute top-full left-0 mt-2 p-4 bg-white rounded-xl shadow-xl border border-gray-200 z-50 min-w-[220px]">
+                            <p class="text-xs font-medium text-gray-500 mb-3">Stroke Color</p>
+                            <div class="grid grid-cols-5 gap-2 mb-4">
+                                <template x-for="c in colorPalette" :key="c">
+                                    <button @click="setColor(c); open = false" 
+                                        :style="{ backgroundColor: c }"
+                                        :class="color === c ? 'ring-2 ring-violet-500 ring-offset-2' : ''"
+                                        class="w-9 h-9 rounded-lg border border-gray-200 hover:scale-110 transition-transform cursor-pointer">
+                                    </button>
+                                </template>
+                            </div>
+                            <div class="pt-3 border-t border-gray-100">
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <span class="text-xs text-gray-500">Custom:</span>
+                                    <input type="color" x-model="color" @input="setColor($event.target.value)"
+                                        class="w-10 h-8 rounded cursor-pointer border border-gray-200">
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Divider -->
+                <div class="w-px h-8 bg-gray-200 mx-1"></div>
+
+                <!-- Stroke Width Presets -->
+                <div class="flex items-center gap-1 px-1">
+                    <template x-for="sw in strokeWidths" :key="sw.value">
+                        <button @click="setStrokeWidth(sw.value)"
+                            :class="strokeWidth == sw.value ? 'bg-violet-100 text-violet-600' : 'hover:bg-gray-100 text-gray-500'"
+                            class="w-9 h-9 rounded-lg transition-all duration-150 flex items-center justify-center"
+                            :title="sw.label">
+                            <div class="rounded-full bg-current" :style="{ width: sw.size + 'px', height: sw.size + 'px' }"></div>
                         </button>
                     </template>
-                    <input type="color" x-model="color" @input="setColor($event.target.value)"
-                        class="w-6 h-6 rounded cursor-pointer border-0 p-0">
                 </div>
 
-                <!-- Stroke Width -->
-                <div class="flex items-center gap-2 px-3 border-l border-gray-200">
-                    <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16" />
-                    </svg>
-                    <input type="range" min="1" max="20" x-model="strokeWidth"
-                        @input="setStrokeWidth($event.target.value)"
-                        class="w-20 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                    <span class="text-xs text-gray-500 w-4" x-text="strokeWidth"></span>
+                <!-- Divider -->
+                <div class="w-px h-8 bg-gray-200 mx-1"></div>
+
+                <!-- Canvas Options -->
+                <div class="flex items-center gap-0.5 px-1">
+                    <!-- Background Color -->
+                    <div class="relative" x-data="{ open: false }">
+                        <button @click="open = !open" 
+                            :class="backgroundColor !== '#ffffff' ? 'bg-violet-100 text-violet-600' : 'hover:bg-gray-100 text-gray-600'"
+                            class="p-2.5 rounded-lg transition-all duration-150" title="Background Color">
+                            <i class="ph ph-paint-bucket text-xl"></i>
+                        </button>
+                        <!-- Background Color Dropdown -->
+                        <div x-show="open" @click.outside="open = false" x-transition
+                            class="absolute top-full right-0 mt-2 p-3 bg-white rounded-xl shadow-xl border border-gray-200 z-50 min-w-[180px]">
+                            <p class="text-xs font-medium text-gray-500 mb-2">Background</p>
+                            <div class="grid grid-cols-5 gap-1.5">
+                                <template x-for="bg in backgroundColors" :key="bg">
+                                    <button @click="setBackgroundColor(bg); open = false" 
+                                        :style="{ backgroundColor: bg }"
+                                        :class="[
+                                            backgroundColor === bg ? 'ring-2 ring-violet-500 ring-offset-1' : '',
+                                            bg === '#ffffff' ? 'border border-gray-300' : ''
+                                        ]"
+                                        class="w-7 h-7 rounded-lg hover:scale-110 transition-transform">
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Grid Toggle -->
+                    <button @click="toggleGrid()"
+                        :class="showGrid ? 'bg-violet-100 text-violet-600' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 rounded-lg transition-all duration-150" title="Toggle Grid (G)">
+                        <i class="ph ph-grid-four text-xl"></i>
+                    </button>
                 </div>
+
+                <!-- Divider -->
+                <div class="w-px h-8 bg-gray-200 mx-1"></div>
 
                 <!-- Zoom Controls -->
-                <div class="flex items-center gap-1 px-3 border-l border-gray-200">
-                    <button @click="zoomOut()" class="p-1.5 rounded hover:bg-gray-100 text-gray-600">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
-                        </svg>
+                <div class="flex items-center gap-0.5 px-1">
+                    <button @click="zoomOut()" class="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors">
+                        <i class="ph ph-minus text-lg"></i>
                     </button>
-                    <span class="text-xs text-gray-600 w-10 text-center" x-text="Math.round(zoom * 100) + '%'"></span>
-                    <button @click="zoomIn()" class="p-1.5 rounded hover:bg-gray-100 text-gray-600">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                        </svg>
+                    <button @click="resetZoom()" 
+                        class="px-2 py-1 rounded-lg hover:bg-gray-100 text-gray-600 text-xs font-medium min-w-[50px] transition-colors"
+                        x-text="Math.round(zoom * 100) + '%'">
                     </button>
-                    <button @click="resetZoom()" class="p-1.5 rounded hover:bg-gray-100 text-gray-600 text-xs">
-                        Fit
+                    <button @click="zoomIn()" class="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors">
+                        <i class="ph ph-plus text-lg"></i>
                     </button>
                 </div>
 
-                <!-- Clear Button -->
-                <div class="pl-3 border-l border-gray-200">
-                    <!-- Image Upload Button -->
+                <!-- Divider -->
+                <div class="w-px h-8 bg-gray-200 mx-1"></div>
+
+                <!-- Actions -->
+                <div class="flex items-center gap-0.5 px-1">
                     <input type="file" x-ref="imageInput" @change="uploadImage($event)" accept="image/*" class="hidden">
                     <button @click="$refs.imageInput.click()" 
-                        class="p-2 rounded-lg hover:bg-green-50 text-green-600 transition-colors"
+                        class="p-2.5 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors"
                         title="Add Image (Ctrl+V to paste)">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
+                        <i class="ph ph-image text-xl"></i>
                     </button>
-                    <button @click="clearCanvas()" class="p-2 rounded-lg hover:bg-red-50 text-red-500 transition-colors"
+                    <button @click="clearCanvas()" 
+                        class="p-2.5 rounded-lg hover:bg-red-50 text-gray-600 hover:text-red-500 transition-colors"
                         title="Clear Canvas">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
+                        <i class="ph ph-trash text-xl"></i>
                     </button>
                 </div>
             </div>
         </div>
 
         <!-- Connection Status -->
-        <div class="connection-status"
-            :class="connected ? 'connection-status--connected' : 'connection-status--disconnected'">
-            <div class="connection-status__dot"></div>
-            <span x-text="connected ? 'Connected' : 'Disconnected'"></span>
+        <div class="fixed bottom-4 left-4 z-50">
+            <div class="flex items-center gap-2 px-3 py-2 bg-white/90 backdrop-blur rounded-lg shadow-md border border-gray-200/80 text-sm"
+                :class="connected ? 'text-emerald-600' : 'text-gray-400'">
+                <i :class="connected ? 'ph ph-wifi-high' : 'ph ph-wifi-slash'" class="text-lg"></i>
+                <span x-text="connected ? 'Connected' : 'Disconnected'"></span>
+            </div>
         </div>
 
         <!-- User Panel (bottom right) -->
         <div class="fixed bottom-4 right-4 z-50" x-show="userName">
             <!-- Connected users panel -->
-            <div class="bg-white/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+            <div class="bg-white/95 backdrop-blur rounded-xl shadow-lg border border-gray-200/80 overflow-hidden min-w-[200px]">
                 <!-- Header with your name -->
-                <div class="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                <div class="px-3 py-2.5 bg-gray-50/80 border-b border-gray-200/80 flex items-center justify-between">
                     <div class="flex items-center gap-2">
-                        <div class="w-3 h-3 rounded-full" :style="{ backgroundColor: userColor }"></div>
-                        <span class="text-sm font-medium" x-text="userName"></span>
+                        <div class="w-2.5 h-2.5 rounded-full ring-2 ring-white shadow-sm" :style="{ backgroundColor: userColor }"></div>
+                        <span class="text-sm font-medium text-gray-700" x-text="userName"></span>
                         <span class="text-xs text-gray-400">(you)</span>
                         <button @click="editUserName()" 
-                            class="p-1 text-gray-400 hover:text-blue-500 transition-colors"
+                            class="p-1 text-gray-400 hover:text-violet-500 transition-colors"
                             title="Edit name">
-                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
+                            <i class="ph ph-pencil-simple text-sm"></i>
                         </button>
                     </div>
                     <button @click="toggleUserPanel()" 
                         class="text-gray-400 hover:text-gray-600 transition-colors">
-                        <svg class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                            :class="userPanelExpanded ? 'rotate-180' : ''">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                        </svg>
+                        <i class="ph ph-caret-down text-lg transition-transform" :class="userPanelExpanded ? 'rotate-180' : ''"></i>
                     </button>
                 </div>
 
@@ -182,20 +232,15 @@
                         </div>
                     </template>
                     <template x-for="user in remoteUsers" :key="user.oduserId">
-                        <div class="px-3 py-2 flex items-center justify-between hover:bg-gray-50 border-b border-gray-100 last:border-b-0">
+                        <div class="px-3 py-2 flex items-center justify-between hover:bg-gray-50/80 border-b border-gray-100 last:border-b-0">
                             <div class="flex items-center gap-2">
-                                <div class="w-3 h-3 rounded-full" :style="{ backgroundColor: user.color }"></div>
-                                <span class="text-sm" x-text="user.name"></span>
+                                <div class="w-2.5 h-2.5 rounded-full" :style="{ backgroundColor: user.color }"></div>
+                                <span class="text-sm text-gray-600" x-text="user.name"></span>
                             </div>
                             <button @click="jumpToUser(user.oduserId)" 
-                                class="p-1 text-gray-400 hover:text-blue-500 transition-colors"
+                                class="p-1 text-gray-400 hover:text-violet-500 transition-colors"
                                 title="Jump to user's location">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                        d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                        d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                                </svg>
+                                <i class="ph ph-map-pin text-base"></i>
                             </button>
                         </div>
                     </template>
@@ -204,23 +249,19 @@
         </div>
 
         <!-- Loading Overlay -->
-        <div x-show="loading && userName" x-transition class="absolute inset-0 bg-white/80 flex items-center justify-center z-50">
+        <div x-show="loading && userName" x-transition class="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50">
             <div class="text-center">
-                <div class="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto">
-                </div>
+                <i class="ph ph-circle-notch text-4xl text-violet-500 animate-spin"></i>
                 <p class="mt-4 text-gray-600">Loading whiteboard...</p>
             </div>
         </div>
 
         <!-- Name Entry Modal (shown before whiteboard) -->
-        <div x-show="!userName" class="absolute inset-0 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center z-[100]">
+        <div x-show="!userName" class="absolute inset-0 bg-gradient-to-br from-violet-50 to-indigo-100 flex items-center justify-center z-[100]">
             <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4">
                 <div class="text-center mb-6">
-                    <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
+                    <div class="w-16 h-16 bg-violet-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <i class="ph ph-user text-3xl text-violet-600"></i>
                     </div>
                     <h1 class="text-2xl font-bold text-gray-800">Welcome to the Whiteboard</h1>
                     <p class="text-gray-500 mt-2">Enter your name to join the collaboration</p>
@@ -234,14 +275,14 @@
                             x-model="userNameInput" 
                             @keydown.enter="setUserName()"
                             placeholder="Enter your name..."
-                            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg">
+                            class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent text-lg">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Or pick a fun name:</label>
                         <div class="flex flex-wrap gap-2">
                             <template x-for="animal in suggestedNames" :key="animal">
                                 <button @click="userNameInput = animal" 
-                                    :class="userNameInput === animal ? 'bg-blue-100 border-blue-500 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'"
+                                    :class="userNameInput === animal ? 'bg-violet-100 border-violet-400 text-violet-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'"
                                     class="px-3 py-1.5 text-sm border rounded-full transition-colors">
                                     <span x-text="animal"></span>
                                 </button>
@@ -251,7 +292,7 @@
 
                     <button @click="setUserName()" 
                         :disabled="!userNameInput.trim()"
-                        :class="userNameInput.trim() ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed'"
+                        :class="userNameInput.trim() ? 'bg-violet-600 hover:bg-violet-700' : 'bg-gray-300 cursor-not-allowed'"
                         class="w-full py-3 text-white font-medium rounded-xl transition-colors mt-4">
                         Join Whiteboard
                     </button>
@@ -275,11 +316,13 @@
 
                 // UI State
                 mode: 'draw',
-                color: '#000000',
-                strokeWidth: 4,
+                color: '#1e1e1e',
+                strokeWidth: 2,
                 zoom: 1,
                 connected: false,
                 loading: true,
+                showGrid: true,
+                backgroundColor: '#ffffff',
 
                 // User state
                 userName: '',  // Will be set in init() with sanitization
@@ -294,8 +337,30 @@
                     'Kakapo', 'Fossa', 'Dugong', 'Saola', 'Tarsier'
                 ],
 
-                // Color palette
-                colors: ['#000000', '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6'],
+                // Extended color palette (Excalidraw-style)
+                colorPalette: [
+                    // Row 1 - Dark shades
+                    '#1e1e1e', '#e03131', '#2f9e44', '#1971c2', '#9c36b5',
+                    // Row 2 - Medium shades  
+                    '#868e96', '#f08c00', '#0c8599', '#6741d9', '#c2255c',
+                    // Row 3 - Light shades
+                    '#ced4da', '#ffd43b', '#a9e34b', '#66d9e8', '#e599f7',
+                ],
+
+                // Background color options
+                backgroundColors: [
+                    '#ffffff', '#f8f9fa', '#fff5f5', '#f3f0ff', '#e7f5ff',
+                    '#ebfbee', '#fff9db', '#343a40', '#212529', '#0d0d0d',
+                ],
+
+                // Stroke width presets
+                strokeWidths: [
+                    { value: 1, size: 4, label: 'Extra thin' },
+                    { value: 2, size: 6, label: 'Thin' },
+                    { value: 4, size: 8, label: 'Medium' },
+                    { value: 8, size: 12, label: 'Thick' },
+                    { value: 16, size: 16, label: 'Extra thick' },
+                ],
 
                 async init() {
                     // Load and sanitize stored user name
@@ -380,6 +445,8 @@
                         if (e.key === 'd' || e.key === 'D') this.setMode('draw');
                         if (e.key === 'e' || e.key === 'E') this.setMode('erase');
                         if (e.key === 'v' || e.key === 'V') this.setMode('select');
+                        if (e.key === 'h' || e.key === 'H') this.setMode('pan');
+                        if (e.key === 'g' || e.key === 'G') this.toggleGrid();
                     });
                 },
 
@@ -396,6 +463,20 @@
                 setStrokeWidth(width) {
                     this.strokeWidth = parseInt(width);
                     this.whiteboard.setStrokeWidth(this.strokeWidth);
+                },
+
+                setBackgroundColor(color) {
+                    this.backgroundColor = color;
+                    if (this.whiteboard) {
+                        this.whiteboard.setBackgroundColor(color);
+                    }
+                },
+
+                toggleGrid() {
+                    this.showGrid = !this.showGrid;
+                    if (this.whiteboard) {
+                        this.whiteboard.setShowGrid(this.showGrid);
+                    }
                 },
 
                 zoomIn() {

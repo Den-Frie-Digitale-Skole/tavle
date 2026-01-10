@@ -150,11 +150,11 @@ register_socketio_handlers(socketio)
 # Content Security Policy - now using local vendor files, much stricter CSP possible
 CSP_POLICY = os.environ.get('CSP_POLICY', (
     "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "  # unsafe-eval needed for Tailwind JIT
-    "style-src 'self' 'unsafe-inline'; "
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "  # 'unsafe-eval' needed for some libs, consider removing if possible
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
     "img-src 'self' data: blob:; "
     "connect-src 'self' ws: wss:; "
-    "font-src 'self'; "
+    "font-src 'self' https://cdn.jsdelivr.net; "
     "frame-ancestors 'self';"
 ))
 

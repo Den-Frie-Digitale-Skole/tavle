@@ -26,6 +26,10 @@ class Whiteboard {
         this.color = options.color || '#000000';
         this.strokeWidth = options.strokeWidth || 4.0;
 
+        // Canvas settings
+        this.backgroundColor = options.backgroundColor || '#ffffff';
+        this.showGrid = options.showGrid !== undefined ? options.showGrid : true;
+
         // View transform
         this.zoom = 1;
         this.pan = { x: 0, y: 0 };
@@ -1096,11 +1100,13 @@ class Whiteboard {
         this.baseCtx.clearRect(0, 0, this.baseCanvas.width, this.baseCanvas.height);
 
         // Draw background
-        this.baseCtx.fillStyle = '#ffffff';
+        this.baseCtx.fillStyle = this.backgroundColor || '#ffffff';
         this.baseCtx.fillRect(0, 0, this.baseCanvas.width, this.baseCanvas.height);
 
         // Draw grid (optional visual aid)
-        this._drawGrid();
+        if (this.showGrid) {
+            this._drawGrid();
+        }
 
         // Draw all strokes
         this.strokes.forEach(stroke => {
@@ -1269,11 +1275,13 @@ class Whiteboard {
     }
 
     _drawGrid() {
-        const gridSize = 50 * this.zoom;
+        const gridSize = 20 * this.zoom;
         const offsetX = this.pan.x % gridSize;
         const offsetY = this.pan.y % gridSize;
 
-        this.baseCtx.strokeStyle = '#f0f0f0';
+        // Determine grid color based on background brightness
+        const isDarkBg = this._isDarkColor(this.backgroundColor);
+        this.baseCtx.strokeStyle = isDarkBg ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)';
         this.baseCtx.lineWidth = 1;
 
         // Vertical lines
@@ -1291,6 +1299,16 @@ class Whiteboard {
             this.baseCtx.lineTo(this.baseCanvas.width, y);
             this.baseCtx.stroke();
         }
+    }
+
+    _isDarkColor(hexColor) {
+        // Convert hex to RGB and calculate brightness
+        const hex = hexColor.replace('#', '');
+        const r = parseInt(hex.substr(0, 2), 16);
+        const g = parseInt(hex.substr(2, 2), 16);
+        const b = parseInt(hex.substr(4, 2), 16);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        return brightness < 128;
     }
 
     // =========================================================================
@@ -1539,6 +1557,16 @@ class Whiteboard {
 
     setEraserWidth(width) {
         this.eraserWidth = width;
+    }
+
+    setBackgroundColor(color) {
+        this.backgroundColor = color;
+        this._redrawBase();
+    }
+
+    setShowGrid(show) {
+        this.showGrid = show;
+        this._redrawBase();
     }
 
     _updateCursor() {
