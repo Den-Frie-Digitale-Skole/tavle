@@ -312,7 +312,83 @@ The default configuration supports 300 daily users comfortably:
 
 ---
 
-## 🔒 Security Hardening
+## � Backup & Recovery
+
+### What to Backup
+
+| Data | Location | Method |
+|------|----------|--------|
+| PostgreSQL database | Docker volume `postgres_data` | `pg_dump` or volume snapshot |
+| Application logs | Docker volume or `/app/logs` | Optional (for debugging) |
+
+### Automated Daily Backup (Recommended)
+
+Create a backup script:
+
+```bash
+#!/bin/bash
+# /opt/whiteboard/backup.sh
+
+BACKUP_DIR="/opt/whiteboard/backups"
+DATE=$(date +%Y%m%d_%H%M%S)
+RETENTION_DAYS=30
+
+# Create backup directory
+mkdir -p $BACKUP_DIR
+
+# Dump PostgreSQL database
+docker compose exec -T db pg_dump -U whiteboard whiteboard | gzip > "$BACKUP_DIR/whiteboard_$DATE.sql.gz"
+
+# Remove old backups
+find $BACKUP_DIR -name "*.sql.gz" -mtime +$RETENTION_DAYS -delete
+
+echo "Backup completed: whiteboard_$DATE.sql.gz"
+```
+
+Add to crontab:
+```bash
+# Run daily at 2 AM
+0 2 * * * /opt/whiteboard/backup.sh >> /var/log/whiteboard-backup.log 2>&1
+```
+
+### Manual Backup
+
+```bash
+# Quick database dump
+docker compose exec -T db pg_dump -U whiteboard whiteboard > backup.sql
+
+# Compressed backup
+docker compose exec -T db pg_dump -U whiteboard whiteboard | gzip > backup_$(date +%Y%m%d).sql.gz
+```
+
+### Restore from Backup
+
+```bash
+# Stop the application (keep database running)
+docker compose stop app
+
+# Restore database
+gunzip -c backup_20260110.sql.gz | docker compose exec -T db psql -U whiteboard whiteboard
+
+# Restart application
+docker compose start app
+```
+
+### SQLite Backup (Development)
+
+If using SQLite for development:
+
+```bash
+# Simple file copy (while app is stopped)
+cp whiteboard.db whiteboard_backup_$(date +%Y%m%d).db
+
+# Or use SQLite's backup command (while running)
+sqlite3 whiteboard.db ".backup 'whiteboard_backup.db'"
+```
+
+---
+
+## �🔒 Security Hardening
 
 ### Additional Recommendations
 
