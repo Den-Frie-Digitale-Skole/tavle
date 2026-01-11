@@ -46,6 +46,9 @@ class Whiteboard {
         this.isMoving = false;
         this.isResizing = false;
         this.isErasing = false;
+        this.isSelecting = false;  // Drag selection box active
+        this.selectionStart = null;  // Start point of selection box
+        this.selectionEnd = null;  // End point of selection box
         this.eraserWidth = 20;  // Eraser radius
         this.resizeHandle = null;  // 'nw' | 'ne' | 'sw' | 'se' | null
         this.resizeImageId = null;
@@ -327,10 +330,14 @@ class Whiteboard {
                 }
                 this._redrawActive();
             } else {
-                // Click on empty space - deselect all
+                // Click on empty space - start selection box drag
                 if (!e.shiftKey) {
                     this.deselectAll();
                 }
+                // Start drag selection box
+                this.isSelecting = true;
+                this.selectionStart = { ...point };
+                this.selectionEnd = { ...point };
             }
             return;
         }
@@ -449,13 +456,21 @@ class Whiteboard {
         }
 
         // Update cursor when hovering over resize handles in select mode
-        if (this.mode === 'select' && !this.isMoving && !this.isResizing) {
+        if (this.mode === 'select' && !this.isMoving && !this.isResizing && !this.isSelecting) {
             const resizeHit = this._hitTestResizeHandle(point.x, point.y);
             if (resizeHit) {
                 this.activeCanvas.style.cursor = this._getResizeCursor(resizeHit.handle);
             } else {
                 this._updateCursor();
             }
+        }
+
+        // Handle selection box drag
+        if (this.isSelecting) {
+            this.selectionEnd = { ...point };
+            this._redrawActive();
+            this._drawSelectionBox();
+            return;
         }
 
         if (this.isMoving && this.isMovingImages && this.selectedImages.size > 0) {
@@ -549,6 +564,16 @@ class Whiteboard {
         if (this.isPanning) {
             this.isPanning = false;
             this._updateCursor();
+            return;
+        }
+
+        // Handle selection box completion
+        if (this.isSelecting) {
+            this._selectItemsInBox();
+            this.isSelecting = false;
+            this.selectionStart = null;
+            this.selectionEnd = null;
+            this._redrawActive();
             return;
         }
 
@@ -943,6 +968,134 @@ class Whiteboard {
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.restore();
+    }
+
+    _drawSelectionBox() {
+        if (!this.selectionStart || !this.selectionEnd) return;
+
+        const ctx = this.activeCtx;
+        
+        // Convert canvas coordinates to screen coordinates
+        const x1 = this.selectionStart.x * this.zoom + this.pan.x;
+        const y1 = this.selectionStart.y * this.zoom + this.pan.y;
+        const x2 = this.selectionEnd.x * this.zoom + this.pan.x;
+        const y2 = this.selectionEnd.y * this.zoom + this.pan.y;
+
+        const left = Math.min(x1, x2);
+        const top = Math.min(y1, y2);
+        const width = Math.abs(x2 - x1);
+        const height = Math.abs(y2 - y1);
+
+        ctx.save();
+        
+        // Fill with semi-transparent blue
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.1)';
+        ctx.fillRect(left, top, width, height);
+        
+        // Draw border with dashed line
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([5, 5]);
+        ctx.strokeRect(left, top, width, height);
+        ctx.setLineDash([]);
+        
+        ctx.restore();
+    }
+
+    _selectItemsInBox() {
+        if (!this.selectionStart || !this.selectionEnd) return;
+
+        const left = Math.min(this.selectionStart.x, this.selectionEnd.x);
+        const right = Math.max(this.selectionStart.x, this.selectionEnd.x);
+        const top = Math.min(this.selectionStart.y, this.selectionEnd.y);
+        const bottom = Math.max(this.selectionStart.y, this.selectionEnd.y);
+
+        // Check if the selection box is too small (just a click, not a drag)
+        const boxWidth = right - left;
+        const boxHeight = bottom - top;
+        if (boxWidth < 5 && boxHeight < 5) {
+            return; // Treat as a deselect click, already handled
+        }
+
+        // Select strokes within the box
+        this.strokes.forEach((stroke, strokeId) => {
+            if (this._isStrokeInBox(stroke, left, top, right, bottom)) {
+                this.selectedStrokes.add(strokeId);
+            }
+        });
+
+        // Select images within the box
+        this.images.forEach((image, imageId) => {
+            if (this._isImageInBox(image, left, top, right, bottom)) {
+                this.selectedImages.add(imageId);
+            }
+        });
+
+        this._redrawActive();
+    }
+
+    _isStrokeInBox(stroke, left, top, right, bottom) {
+        if (!stroke.points || stroke.points.length === 0) return false;
+
+        const transform = stroke.transform || { x: 0, y: 0, scale: 1 };
+
+        // Check if any point of the stroke is inside the selection box
+        for (const point of stroke.points) {
+            const px = point.x + transform.x;
+            const py = point.y + transform.y;
+            if (px >= left && px <= right && py >= top && py <= bottom) {
+                return true;
+            }
+        }
+
+        // Also check bounding box intersection for better selection of large strokes
+        const bounds = this._getStrokeBounds(stroke);
+        if (bounds) {
+            // Check if bounding boxes intersect
+            const strokeLeft = bounds.minX + transform.x;
+            const strokeRight = bounds.maxX + transform.x;
+            const strokeTop = bounds.minY + transform.y;
+            const strokeBottom = bounds.maxY + transform.y;
+
+            // Check for intersection
+            // Could be optimized further, but sufficient for now
+            if (strokeRight >= left && strokeLeft <= right &&
+                strokeBottom >= top && strokeTop <= bottom) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    _isImageInBox(image, left, top, right, bottom) {
+        const transform = image.transform || { x: 0, y: 0, scale: 1 };
+        const scale = transform.scale || 1;
+
+        const imgLeft = image.x + transform.x;
+        const imgTop = image.y + transform.y;
+        const imgRight = imgLeft + image.width * scale;
+        const imgBottom = imgTop + image.height * scale;
+
+        // Check if image bounds intersect with selection box
+        return imgRight >= left && imgLeft <= right &&
+               imgBottom >= top && imgTop <= bottom;
+    }
+
+    _getStrokeBounds(stroke) {
+        if (!stroke.points || stroke.points.length === 0) return null;
+
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+
+        for (const point of stroke.points) {
+            minX = Math.min(minX, point.x);
+            maxX = Math.max(maxX, point.x);
+            minY = Math.min(minY, point.y);
+            maxY = Math.max(maxY, point.y);
+        }
+
+        return { minX, maxX, minY, maxY };
     }
 
     // =========================================================================
