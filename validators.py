@@ -299,8 +299,8 @@ def validate_stroke_complete_event(data: Dict) -> Tuple[bool, Dict, str]:
         return False, {}, 'Invalid strokeId'
     
     points = validate_points(data.get('points', []))
-    if len(points) < 2:
-        return False, {}, 'Stroke must have at least 2 points'
+    if len(points) < 1:
+        return False, {}, 'Stroke must have at least 1 point'
     
     # Validate zIndex (optional, defaults to 0)
     z_index = 0
