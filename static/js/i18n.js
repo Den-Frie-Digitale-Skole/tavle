@@ -66,6 +66,8 @@ const translations = {
             connected: 'Connected',
             disconnected: 'Disconnected',
             connecting: 'Connecting...',
+            rateLimited: 'Rate Limited',
+            rateLimitedHint: 'Too many refreshes - please wait',
         },
         
         // Name picker modal
@@ -245,6 +247,8 @@ const translations = {
             connected: 'Forbundet',
             disconnected: 'Afbrudt',
             connecting: 'Forbinder...',
+            rateLimited: 'Begrænset',
+            rateLimitedHint: 'For mange genindlæsninger - vent venligst',
         },
         
         // Name picker modal

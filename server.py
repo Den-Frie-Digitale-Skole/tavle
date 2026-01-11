@@ -112,7 +112,7 @@ limiter = Limiter(
     app=app,
     key_func=get_remote_address,
     # Set reasonable default limits for anonymous users
-    default_limits=["200 per day", "50 per hour"],
+    default_limits=["1000 per day", "200 per hour"],
     storage_uri="memory://",
 )
 
@@ -257,7 +257,7 @@ def complete_setup_route():
 
 
 @app.route('/')
-@limiter.limit("30 per minute")
+@limiter.limit("60 per minute")
 def index():
     """Landing page. Redirects to setup if first run."""
     if needs_setup():
@@ -266,7 +266,7 @@ def index():
 
 
 @app.route('/docs')
-@limiter.limit("30 per minute")
+@limiter.limit("60 per minute")
 def api_docs():
     """API Documentation page."""
     return render_template('docs.html')
@@ -274,7 +274,7 @@ def api_docs():
 
 @app.route('/board/<token>')
 @app.route('/b/<token>')
-@limiter.limit("30 per minute")
+@limiter.limit("120 per minute")
 def board(token):
     """Render whiteboard for a specific document using access token."""
     doc = get_document_by_token(token)
@@ -284,7 +284,7 @@ def board(token):
 
 
 @app.route('/get/<token>')
-@limiter.limit("30 per minute")
+@limiter.limit("120 per minute")
 def get_document(token):
     """Get document data for rendering whiteboard (without exposing sensitive data)."""
     doc = get_document_by_token(token)

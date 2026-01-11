@@ -230,9 +230,10 @@
         <div class="fixed bottom-4 left-4 z-50">
             <div class="flex items-center gap-2 px-3 py-2 bg-white shadow-lg text-sm"
                 style="border: 2px solid #1e1e1e; transform: rotate(-1deg);"
-                :class="connected ? 'text-emerald-600' : 'text-gray-400'">
-                <div class="w-2.5 h-2.5" :class="connected ? 'bg-emerald-500' : 'bg-gray-400'"></div>
-                <span class="font-bold uppercase tracking-wider text-xs" x-text="connected ? t('connection.connected') : t('connection.disconnected')"></span>
+                :class="rateLimited ? 'text-amber-600' : (connected ? 'text-emerald-600' : 'text-gray-400')"
+                :title="rateLimited ? t('connection.rateLimitedHint') : ''">
+                <div class="w-2.5 h-2.5" :class="rateLimited ? 'bg-amber-500' : (connected ? 'bg-emerald-500' : 'bg-gray-400')"></div>
+                <span class="font-bold uppercase tracking-wider text-xs" x-text="rateLimited ? t('connection.rateLimited') : (connected ? t('connection.connected') : t('connection.disconnected'))"></span>
             </div>
         </div>
 
@@ -458,6 +459,7 @@
                 strokeWidth: prefs.strokeWidth,
                 zoom: 1,
                 connected: false,
+                rateLimited: false,
                 loading: true,
                 showGrid: prefs.showGrid,
                 backgroundColor: prefs.backgroundColor,
@@ -580,6 +582,11 @@
                     // Listen for connection state changes
                     this.syncManager.onConnectionChange((connected) => {
                         this.connected = connected;
+                    });
+
+                    // Listen for rate limit state changes
+                    this.syncManager.onRateLimitChange((rateLimited) => {
+                        this.rateLimited = rateLimited;
                     });
 
                     // Get user color from whiteboard

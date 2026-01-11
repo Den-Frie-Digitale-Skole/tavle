@@ -50,8 +50,8 @@ class SocketRateLimiter:
             'image-update': (30, 1),       # 30 per second
             'image-delete': (10, 1),       # 10 per second
             'clear': (2, 60),              # 2 per minute (destructive action)
-            'join': (5, 60),               # 5 per minute
-            'leave': (10, 60),             # 10 per minute
+            'join': (60, 60),              # 60 per minute (reconnects happen frequently)
+            'leave': (60, 60),             # 60 per minute
             'default': (60, 1)             # 60 per second default
         }
     
@@ -110,7 +110,7 @@ def rate_limit_check(event: str) -> bool:
             f"Rate limit exceeded: sid={sid}, event={event}, "
             f"ip={request.remote_addr}"
         )
-        emit('error', {'message': 'Rate limit exceeded', 'event': event})
+        emit('error', {'message': 'Rate limit exceeded', 'event': event, 'code': 'RATE_LIMITED'})
         return False
     return True
 

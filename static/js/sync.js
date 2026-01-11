@@ -30,6 +30,10 @@ class SyncManager {
         this.lastRejoinTime = 0;
         this.rejoinDebounceMs = 2000;  // Minimum 2 seconds between rejoin attempts
 
+        // Rate limit state
+        this.rateLimited = false;
+        this.rateLimitClearTimer = null;
+
         // Server URL
         this.serverUrl = options.serverUrl || window.location.origin;
 
@@ -52,9 +56,39 @@ class SyncManager {
         this._connectionCallback = callback;
     }
 
+    /**
+     * Set a callback to be notified of rate limit state changes
+     * @param {Function} callback - Function to call with (rateLimited: boolean)
+     */
+    onRateLimitChange(callback) {
+        this._rateLimitCallback = callback;
+    }
+
     _notifyConnectionChange() {
         if (this._connectionCallback) {
             this._connectionCallback(this.connected);
+        }
+    }
+
+    _notifyRateLimitChange() {
+        if (this._rateLimitCallback) {
+            this._rateLimitCallback(this.rateLimited);
+        }
+    }
+
+    _setRateLimited(limited) {
+        this.rateLimited = limited;
+        this._notifyRateLimitChange();
+        
+        // Auto-clear rate limit status after 60 seconds
+        if (limited) {
+            if (this.rateLimitClearTimer) {
+                clearTimeout(this.rateLimitClearTimer);
+            }
+            this.rateLimitClearTimer = setTimeout(() => {
+                this.rateLimited = false;
+                this._notifyRateLimitChange();
+            }, 60000);
         }
     }
 
@@ -101,9 +135,19 @@ class SyncManager {
                     }
                 });
 
-                // Handle authentication errors - rejoin room (with debounce)
+                // Handle authentication and rate limit errors
                 this.socket.on('error', (error) => {
                     console.warn('Socket error:', error);
+                    
+                    // Handle rate limiting
+                    if (error.code === 'RATE_LIMITED' || 
+                        (error.message && error.message.includes('Rate limit'))) {
+                        console.warn('Rate limited by server');
+                        this._setRateLimited(true);
+                        return;
+                    }
+                    
+                    // Handle authentication errors - rejoin room (with debounce)
                     if (error.code === 'AUTH_REQUIRED' || 
                         (error.message && error.message.includes('Not authenticated'))) {
                         const now = Date.now();
