@@ -214,6 +214,11 @@
                         :title="t('tooltips.uploadImage')">
                         <i class="ph ph-image text-xl"></i>
                     </button>
+                    <button @click="exportImage()" 
+                        class="p-2.5 hover:bg-gray-100 text-gray-600 transition-colors border-2 border-transparent hover:border-gray-300"
+                        :title="t('tooltips.export')">
+                        <i class="ph ph-export text-xl"></i>
+                    </button>
                     <button @click="clearCanvas()" 
                         class="p-2.5 hover:bg-red-500 text-gray-600 hover:text-white transition-colors border-2 border-transparent hover:border-gray-900"
                         :title="t('tooltips.clear')">
@@ -702,6 +707,10 @@
                     }
                     // Reset input so the same file can be selected again
                     event.target.value = '';
+                },
+
+                exportImage() {
+                    this.whiteboard.exportAsImage();
                 },
 
                 // Sanitize user name to prevent XSS (defense in depth)

@@ -2350,6 +2350,125 @@ class Whiteboard {
     _generateId(prefix = 'stroke') {
         return prefix + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
     }
+
+    /**
+     * Export the whiteboard as a PNG image.
+     * Renders all content to an offscreen canvas and triggers download.
+     */
+    exportAsImage() {
+        // Calculate bounding box of all content
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        
+        this.strokes.forEach(stroke => {
+            const transform = stroke.transform || { x: 0, y: 0 };
+            stroke.points.forEach(p => {
+                const x = p.x + transform.x;
+                const y = p.y + transform.y;
+                minX = Math.min(minX, x - stroke.strokeWidth);
+                minY = Math.min(minY, y - stroke.strokeWidth);
+                maxX = Math.max(maxX, x + stroke.strokeWidth);
+                maxY = Math.max(maxY, y + stroke.strokeWidth);
+            });
+        });
+        
+        this.images.forEach(image => {
+            const transform = image.transform || { x: 0, y: 0, scale: 1 };
+            const x = image.x + transform.x;
+            const y = image.y + transform.y;
+            const w = image.width * (transform.scale || 1);
+            const h = image.height * (transform.scale || 1);
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x + w);
+            maxY = Math.max(maxY, y + h);
+        });
+        
+        // If empty board, export current view
+        if (!isFinite(minX)) {
+            minX = 0; minY = 0;
+            maxX = this.baseCanvas.width / this.zoom;
+            maxY = this.baseCanvas.height / this.zoom;
+        }
+        
+        // Add padding
+        const padding = 20;
+        minX -= padding; minY -= padding;
+        maxX += padding; maxY += padding;
+        
+        const width = Math.ceil(maxX - minX);
+        const height = Math.ceil(maxY - minY);
+        
+        // Create offscreen canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        
+        // Draw background
+        ctx.fillStyle = this.backgroundColor || '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        
+        // Draw grid if enabled
+        if (this.showGrid) {
+            const gridSize = 20;
+            const isDarkBg = this._isDarkColor(this.backgroundColor);
+            ctx.strokeStyle = isDarkBg ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)';
+            ctx.lineWidth = 1;
+            const offsetX = (-minX) % gridSize;
+            const offsetY = (-minY) % gridSize;
+            for (let x = offsetX; x < width; x += gridSize) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+            }
+            for (let y = offsetY; y < height; y += gridSize) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+            }
+        }
+        
+        // Save current view state
+        const savedZoom = this.zoom;
+        const savedPan = { ...this.pan };
+        
+        // Set export transform (1:1 scale, offset to content)
+        this.zoom = 1;
+        this.pan = { x: -minX, y: -minY };
+        
+        // Collect and sort elements by z-index
+        const elements = [];
+        this.strokes.forEach(stroke => elements.push({ type: 'stroke', data: stroke, zIndex: stroke.zIndex ?? 0 }));
+        this.images.forEach(image => elements.push({ type: 'image', data: image, zIndex: image.zIndex ?? 0 }));
+        elements.sort((a, b) => a.zIndex - b.zIndex);
+        
+        // Render elements
+        elements.forEach(el => {
+            if (el.type === 'stroke') {
+                this._renderStroke(el.data, ctx);
+            } else {
+                const img = this.imageCache.get(el.data.id);
+                if (img) {
+                    const transform = el.data.transform || { x: 0, y: 0, scale: 1 };
+                    const x = (el.data.x + transform.x) + this.pan.x;
+                    const y = (el.data.y + transform.y) + this.pan.y;
+                    const w = el.data.width * (transform.scale || 1);
+                    const h = el.data.height * (transform.scale || 1);
+                    ctx.drawImage(img, x, y, w, h);
+                }
+            }
+        });
+        
+        // Restore view state
+        this.zoom = savedZoom;
+        this.pan = savedPan;
+        
+        // Trigger download
+        canvas.toBlob(blob => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'whiteboard-' + new Date().toISOString().slice(0,10) + '.png';
+            a.click();
+            URL.revokeObjectURL(url);
+        }, 'image/png');
+    }
 }
 
 // Export for module systems
