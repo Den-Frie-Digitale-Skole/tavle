@@ -40,19 +40,20 @@ class SocketRateLimiter:
     def __init__(self):
         self.events = defaultdict(lambda: {'count': 0, 'reset_time': time.time()})
         # (max_events, window_seconds)
+        # Limits are designed to stop abuse, not restrict power users
         self.limits = {
-            'stroke-point': (200, 1),      # 200 per second (for smooth drawing)
-            'stroke-complete': (30, 1),    # 30 per second
-            'stroke-update': (30, 1),      # 30 per second
-            'stroke-delete': (20, 1),      # 20 per second
-            'cursor-move': (30, 1),        # 30 per second
-            'image-add': (5, 60),          # 5 per minute
-            'image-update': (30, 1),       # 30 per second
-            'image-delete': (10, 1),       # 10 per second
-            'clear': (2, 60),              # 2 per minute (destructive action)
-            'join': (60, 60),              # 60 per minute (reconnects happen frequently)
+            'stroke-point': (1000, 1),     # 1000 per second (smooth drawing)
+            'stroke-complete': (500, 1),   # 500 per second
+            'stroke-update': (5000, 1),    # 5000 per second (bulk move operations)
+            'stroke-delete': (1000, 1),    # 1000 per second (bulk delete)
+            'cursor-move': (60, 1),        # 60 per second
+            'image-add': (50, 60),         # 50 per minute
+            'image-update': (1000, 1),     # 1000 per second (bulk move)
+            'image-delete': (500, 1),      # 500 per second (bulk delete)
+            'clear': (5, 60),              # 5 per minute
+            'join': (60, 60),              # 60 per minute
             'leave': (60, 60),             # 60 per minute
-            'default': (60, 1)             # 60 per second default
+            'default': (200, 1)            # 200 per second default
         }
     
     def is_allowed(self, sid: str, event: str) -> bool:
