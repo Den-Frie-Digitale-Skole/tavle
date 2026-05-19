@@ -111,6 +111,13 @@ class Whiteboard {
 
         // Initial setup
         this.resize();
+
+        // Parent iframe / pane resizes often don't fire window "resize" on this document
+        const container = this.baseCanvas.parentElement;
+        if (container && typeof ResizeObserver !== "undefined") {
+            this._resizeObserver = new ResizeObserver(() => this.resize());
+            this._resizeObserver.observe(container);
+        }
     }
 
     // =========================================================================
@@ -1453,7 +1460,7 @@ class Whiteboard {
 
         // Determine grid color based on background brightness
         const isDarkBg = this._isDarkColor(this.backgroundColor);
-        this.baseCtx.strokeStyle = isDarkBg ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)';
+        this.baseCtx.strokeStyle = isDarkBg ? 'rgba(255, 255, 255, 0.08)' : 'rgba(26, 31, 54, 0.04)';
         this.baseCtx.lineWidth = 1;
 
         // Vertical lines
@@ -2189,8 +2196,9 @@ class Whiteboard {
         }
 
         const container = this.baseCanvas.parentElement;
-        const width = container.clientWidth || window.innerWidth;
-        const height = container.clientHeight || window.innerHeight;
+        const rect = container.getBoundingClientRect();
+        const width = Math.round(rect.width) || container.clientWidth || window.innerWidth;
+        const height = Math.round(rect.height) || container.clientHeight || window.innerHeight;
 
         // Check if size actually changed
         if (this.baseCanvas.width === width && this.baseCanvas.height === height) {
@@ -2412,7 +2420,7 @@ class Whiteboard {
         if (this.showGrid) {
             const gridSize = 20;
             const isDarkBg = this._isDarkColor(this.backgroundColor);
-            ctx.strokeStyle = isDarkBg ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)';
+            ctx.strokeStyle = isDarkBg ? 'rgba(255, 255, 255, 0.08)' : 'rgba(26, 31, 54, 0.04)';
             ctx.lineWidth = 1;
             const offsetX = (-minX) % gridSize;
             const offsetY = (-minY) % gridSize;

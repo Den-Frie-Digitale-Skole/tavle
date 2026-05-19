@@ -50,6 +50,10 @@ const translations = {
             small: 'Small',
             large: 'Large',
             extraLarge: 'Extra large',
+            more: 'More tools',
+            groupCanvas: 'Canvas',
+            groupZoom: 'Zoom',
+            groupActions: 'Actions',
         },
         
         // User panel
@@ -232,6 +236,10 @@ const translations = {
             small: 'Lille',
             large: 'Stor',
             extraLarge: 'Ekstra stor',
+            more: 'Flere værktøjer',
+            groupCanvas: 'Tavle',
+            groupZoom: 'Zoom',
+            groupActions: 'Handlinger',
         },
         
         // User panel

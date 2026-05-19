@@ -2,12 +2,14 @@
 Flask-RESTful API for document and stroke management.
 All endpoints require admin API token authentication.
 """
+import hashlib
 import os
 import secrets
 from functools import wraps
-from flask import Blueprint, request, url_for
+from flask import Blueprint, Response, request, url_for
 from flask_restful import Api, Resource, reqparse
 from models import Document, Stroke, Image, get_or_create_document, db
+from render import get_or_render_png, render_document_png
 from setup import get_admin_token
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -186,6 +188,60 @@ class BoardTokenResource(DocumentedResource):
     post.response = {"board": "Board object without strokes/images", "url": "Url with correct tokens"}
 
 # =============================================================================
+# Board Render Resource (PNG rasterization)
+# =============================================================================
+
+def _to_int(value, default):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+class BoardRenderResource(DocumentedResource):
+    """
+    GET /api/boards/<board_id>/render - Server-rendered PNG of the board.
+
+    Query parameters:
+        max_width: Maximum output width in pixels (default 1024, max 4096).
+        bg:        'white' (default) or 'transparent'.
+
+    Responds with ``image/png`` and ``ETag`` keyed on the board ``version``
+    so callers can do cheap ``If-None-Match`` revalidation.
+    """
+
+    method_decorators = [require_admin_token]
+    desc = 'Render a board to a PNG'
+    url = '/boards/<string:board_id>/render'
+
+    def get(self, board_id):
+        doc = get_document_or_404(board_id)
+        if not doc:
+            return {'error': 'Board not found'}, 404
+
+        max_width = _to_int(request.args.get('max_width'), 1024)
+        bg = (request.args.get('bg') or 'white').strip().lower()
+        if bg not in ('white', 'transparent'):
+            bg = 'white'
+
+        version = int(getattr(doc, 'version', 0) or 0)
+        etag = f'W/"board-{doc.id}-v{version}-{max_width}-{bg}"'
+        if_none_match = request.headers.get('If-None-Match', '')
+        if if_none_match and etag in if_none_match:
+            resp = Response(status=304)
+            resp.headers['ETag'] = etag
+            resp.headers['Cache-Control'] = 'private, max-age=15'
+            return resp
+
+        png = get_or_render_png(doc, max_width=max_width, background=bg)
+        resp = Response(png, mimetype='image/png')
+        resp.headers['ETag'] = etag
+        resp.headers['Cache-Control'] = 'private, max-age=15'
+        resp.headers['X-Board-Version'] = str(version)
+        return resp
+
+
+# =============================================================================
 # Stroke Resources
 # =============================================================================
 
@@ -225,7 +281,7 @@ class StrokesResource(DocumentedResource):
             stroke.id = args['id']
         
         stroke.save(force_insert=True)
-        doc.save()  # Update document's updated_at
+        doc.bump_version()  # invalidate render cache + notify integrators
         
         return stroke.to_dict(), 201
     post.response = {"stroke": "Stroke object"}
@@ -237,7 +293,7 @@ class StrokesResource(DocumentedResource):
             return {'error': 'Board not found'}, 404
         
         deleted_count = Stroke.delete().where(Stroke.document == doc).execute()
-        doc.save()
+        doc.bump_version()
         
         return {'deleted': deleted_count}, 200
     delete.response = {"deleted": "Integer count"}
@@ -287,11 +343,8 @@ class StrokeResource(DocumentedResource):
             stroke.stroke_width = args['strokeWidth']
         
         stroke.save()
-        
-        # Update document's updated_at
-        doc = Document.get_by_id(board_id)
-        doc.save()
-        
+        Document.get_by_id(board_id).bump_version()
+
         return stroke.to_dict(), 200
     put.response = {"stroke": "Stroke object"}
     
@@ -299,11 +352,8 @@ class StrokeResource(DocumentedResource):
         try:
             stroke = Stroke.get((Stroke.id == stroke_id) & (Stroke.document_id == board_id))
             stroke.delete_instance()
-            
-            # Update document's updated_at
-            doc = Document.get_by_id(board_id)
-            doc.save()
-            
+            Document.get_by_id(board_id).bump_version()
+
             return {'deleted': stroke_id}, 200
         except Stroke.DoesNotExist:
             return {'error': 'Stroke not found'}, 404
@@ -317,8 +367,9 @@ class StrokeResource(DocumentedResource):
 
 class ImagesResource(DocumentedResource):
     """
-    POST /api/boards/<board_id>/images - Create new image
-    DELETE /api/boards/<board_id>/images - Clear all images
+    GET    /api/boards/<board_id>/images - List images (with optional meta filter)
+    POST   /api/boards/<board_id>/images - Create new image
+    DELETE /api/boards/<board_id>/images - Clear all images (or by meta filter)
     """
     
     method_decorators = [require_admin_token]
@@ -333,7 +384,44 @@ class ImagesResource(DocumentedResource):
         self.parser.add_argument('width', type=float, default=200)
         self.parser.add_argument('height', type=float, default=200)
         self.parser.add_argument('transform', type=dict, location='json', required=False)
+        self.parser.add_argument('meta', type=dict, location='json', required=False)
     
+    @staticmethod
+    def _meta_matches(image_meta, filter_meta):
+        """Shallow equality match for meta filter (all filter keys must match)."""
+        if not filter_meta:
+            return True
+        for key, value in filter_meta.items():
+            if image_meta.get(key) != value:
+                return False
+        return True
+
+    def get(self, board_id):
+        """List images on the board, optionally filtered by meta key/value(s).
+
+        Filter via repeated ``meta_key=...&meta_val=...`` pairs *or*
+        a single ``meta.<key>=<value>`` query arg. We keep this simple
+        (string equality only) since the common case is finding all
+        integrator-inserted images by ``meta.source=my_app`` (or similar).
+        """
+        doc = get_document_or_404(board_id)
+        if not doc:
+            return {'error': 'Board not found'}, 404
+
+        filter_meta = {}
+        for key, value in request.args.items():
+            if key.startswith('meta.'):
+                filter_meta[key[len('meta.'):]] = value
+
+        images = list(Image.select().where(Image.document == doc))
+        if filter_meta:
+            images = [img for img in images if self._meta_matches(img.get_meta(), filter_meta)]
+        return {
+            'images': [img.to_dict() for img in images],
+            'count': len(images),
+        }, 200
+    get.response = {"images": "List of image objects", "count": "Integer"}
+
     def post(self, board_id):
         args = self.parser.parse_args()
         doc = get_document_or_404(board_id)
@@ -347,7 +435,8 @@ class ImagesResource(DocumentedResource):
             y=args['y'],
             width=args['width'],
             height=args['height'],
-            transform=args.get('transform')
+            transform=args.get('transform'),
+            meta=args.get('meta'),
         )
         
         # If client provided an ID, use it
@@ -355,20 +444,35 @@ class ImagesResource(DocumentedResource):
             image.id = args['id']
         
         image.save(force_insert=True)
-        doc.save()  # Update document's updated_at
+        doc.bump_version()
         
         return image.to_dict(), 201
     post.response = {"image": "Image object"}
 
     def delete(self, board_id):
-        """Clear all images from board."""
+        """Clear all images from board, or only those matching a meta filter."""
         doc = get_document_or_404(board_id)
         if not doc:
             return {'error': 'Board not found'}, 404
-        
-        deleted_count = Image.delete().where(Image.document == doc).execute()
-        doc.save()
-        
+
+        filter_meta = {}
+        for key, value in request.args.items():
+            if key.startswith('meta.'):
+                filter_meta[key[len('meta.'):]] = value
+
+        if filter_meta:
+            # Filtered delete: iterate so we can match parsed JSON meta.
+            ids_to_delete = [
+                img.id for img in Image.select().where(Image.document == doc)
+                if self._meta_matches(img.get_meta(), filter_meta)
+            ]
+            if not ids_to_delete:
+                return {'deleted': 0}, 200
+            deleted_count = Image.delete().where(Image.id.in_(ids_to_delete)).execute()
+        else:
+            deleted_count = Image.delete().where(Image.document == doc).execute()
+
+        doc.bump_version()
         return {'deleted': deleted_count}, 200
     delete.response = {"deleted": "Integer count"}
 
@@ -389,6 +493,7 @@ class ImageResource(DocumentedResource):
         self.parser.add_argument('y', type=float, required=False)
         self.parser.add_argument('width', type=float, required=False)
         self.parser.add_argument('height', type=float, required=False)
+        self.parser.add_argument('meta', type=dict, location='json', required=False)
 
     def get(self, board_id, image_id):
         try:
@@ -417,13 +522,12 @@ class ImageResource(DocumentedResource):
             image.width = args['width']
         if args.get('height') is not None:
             image.height = args['height']
+        if args.get('meta') is not None:
+            image.set_meta(args['meta'])
         
         image.save()
-        
-        # Update document's updated_at
-        doc = Document.get_by_id(board_id)
-        doc.save()
-        
+        Document.get_by_id(board_id).bump_version()
+
         return image.to_dict(), 200
     put.response = {"image": "Image object"}
 
@@ -431,11 +535,8 @@ class ImageResource(DocumentedResource):
         try:
             image = Image.get((Image.id == image_id) & (Image.document_id == board_id))
             image.delete_instance()
-            
-            # Update document's updated_at
-            doc = Document.get_by_id(board_id)
-            doc.save()
-            
+            Document.get_by_id(board_id).bump_version()
+
             return {'deleted': image_id}, 200
         except Image.DoesNotExist:
             return {'error': 'Image not found'}, 404
@@ -450,6 +551,7 @@ class ImageResource(DocumentedResource):
 api.add_resource(BoardsResource, BoardsResource.url)
 api.add_resource(BoardResource, BoardResource.url)
 api.add_resource(BoardTokenResource, BoardTokenResource.url)
+api.add_resource(BoardRenderResource, BoardRenderResource.url)
 
 # Stroke resources
 api.add_resource(StrokesResource, StrokesResource.url)

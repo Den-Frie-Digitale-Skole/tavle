@@ -21,8 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install Python dependencies
-COPY requirements.txt .
+# Install Python dependencies (build context = repo root; see docker-compose tavle service)
+COPY tavle/requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir gunicorn
@@ -50,8 +50,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Set working directory
 WORKDIR /app
 
-# Copy application code
-COPY --chown=appuser:appgroup . .
+# Copy application code (build context = repo root when using tavle/docker-compose.yml)
+COPY --chown=appuser:appgroup tavle/ .
 
 # Create logs directory
 RUN mkdir -p /app/logs && chown appuser:appgroup /app/logs

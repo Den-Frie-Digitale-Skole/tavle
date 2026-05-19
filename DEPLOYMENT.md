@@ -23,6 +23,7 @@ Before deploying, ensure you have:
 - [ ] Generated secure `ADMIN_API_TOKEN` (or use web setup wizard)
 - [ ] Generated secure `POSTGRES_PASSWORD`
 - [ ] Configured `ALLOWED_ORIGINS` with your domain(s)
+- [ ] Set `TAVLE_EMBED_FRAME_ANCESTORS` to each parent-app **origin** that may iframe boards (see below), unless `ALLOWED_ORIGINS` already lists only those origins (non-`*`)
 - [ ] Set up SSL termination (Nginx, Traefik, Caddy, or cloud LB)
 - [ ] Configured firewall rules (only expose ports 80/443)
 
@@ -82,6 +83,52 @@ FLASK_ENV=production
 ALLOWED_ORIGINS=https://whiteboard.yourdomain.com
 ```
 
+### Parent-app iframe embed (`frame-ancestors`)
+
+If your application iframes Tavle from another **origin** (e.g. `https://app.example.com` while Tavle is `https://whiteboard.example.com`), list every parent origin that may embed boards:
+
+```bash
+# Comma-separated; scheme + host + port (no path)
+TAVLE_EMBED_FRAME_ANCESTORS=https://app.yourdomain.com,https://staging.yourdomain.com
+```
+
+If you omit this, a non-`*` **`ALLOWED_ORIGINS`** value is reused for `frame-ancestors`.  
+**Development:** when both are unset (and `FLASK_ENV` is not production), `http://localhost:8000` and `http://127.0.0.1:8000` are added automatically so a local parent on :8000 can embed Tavle on :5050.
+
+The same localhost pair is also used when `FLASK_ENV=production` but **`ALLOWED_ORIGINS` is `*`** (typical local Gunicorn), since there is no concrete origin list to inherit. For real production, set **`TAVLE_EMBED_FRAME_ANCESTORS`** or a non-`*` **`ALLOWED_ORIGINS`** that includes your parent app’s HTTPS origin.
+
+**Legacy `CSP_POLICY`:** If you set a full `CSP_POLICY` string in Docker or systemd, any `frame-ancestors …` clause in it is **removed** when building the policy and replaced with the computed value above, so an old `frame-ancestors 'self'` entry cannot block cross-origin embeds.
+
+### Board branding (`TAVLE_EXTRA_STYLESHEETS`)
+
+Optional extra CSS for the **board page** (`/board/…`, `/b/…`) without forking templates. Sheets load **after** the built-in `/static/css/whiteboard.css`, so overrides win in the cascade.
+
+- **Comma-separated** entries. Each entry is either:
+  - A **same-origin path** starting with `/` (recommended with Docker): mount a file into the container and point at it, e.g. `/static/css/brand.css`. No CSP change needed (`'self'` already allows it).
+  - An absolute **`http://` or `https://` URL** (e.g. CSS on your main app or CDN). With the **default** CSP (no custom `CSP_POLICY`), Tavle adds that URL’s **origin** to `style-src` and `font-src` automatically (for `@font-face`).
+
+```bash
+# Mount ./brand.css to /app/static/css/brand.css and reference it:
+TAVLE_EXTRA_STYLESHEETS=/static/css/brand.css
+
+# Multiple sheets (mix allowed):
+TAVLE_EXTRA_STYLESHEETS=/static/css/brand.css,https://cdn.example.com/tavle-overrides.css
+```
+
+If you set a **custom `CSP_POLICY`**, external stylesheet origins are **not** patched into your policy. Tavle logs a startup warning; add those origins to **`style-src`** and **`font-src`** yourself.
+
+Utility classes from Tailwind in the board HTML are unchanged by this setting; use your overlay CSS (specificity or future `--tavle-*` variables in upstream) to tune colors and chrome.
+
+Mount your CSS into the container (or serve it from your main app) and point Tavle at a **browser-reachable** URL—for example:
+
+```bash
+TAVLE_EXTRA_STYLESHEETS=/static/css/brand.css
+# Or load from your main app origin:
+# TAVLE_EXTRA_STYLESHEETS=https://app.example.com/static/css/tavle-brand.css
+```
+
+Custom `@font-face` rules need matching `font-src` in Tavle’s CSP (extend `CSP_POLICY` or use same-origin font CSS). Default Tavle CSP allows `font-src` only from `'self'` and `cdn.jsdelivr.net`.
+
 ### Step 3: Deploy with Production Settings
 
 ```bash
@@ -132,8 +179,8 @@ server {
     ssl_certificate /etc/letsencrypt/live/whiteboard.yourdomain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/whiteboard.yourdomain.com/privkey.pem;
 
-    # Security headers (already set by app, but good to have at proxy)
-    add_header X-Frame-Options "SAMEORIGIN" always;
+    # Do not set X-Frame-Options here: Tavle uses CSP ``frame-ancestors`` so a parent app
+    # on another origin can iframe boards. Proxy-level SAMEORIGIN would block that.
     add_header X-Content-Type-Options "nosniff" always;
 
     # Rate limiting

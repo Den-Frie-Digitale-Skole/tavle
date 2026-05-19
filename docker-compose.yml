@@ -1,15 +1,19 @@
 # =============================================================================
 # Collaborative Whiteboard - Docker Compose Configuration
 # =============================================================================
-
+#
+# Production-style run (gunicorn + eventlet):  docker compose up --build
+# Flask debug on 5050 (like local ``python server.py``):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
 services:
   # ===========================================================================
   # Whiteboard Application
   # ===========================================================================
   app:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: tavle/Dockerfile
     container_name: whiteboard-app
     restart: unless-stopped
     ports:
@@ -21,6 +25,8 @@ services:
       - DB_STALE_TIMEOUT=${DB_STALE_TIMEOUT:-300}
       - DB_TIMEOUT=${DB_TIMEOUT:-30}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - TAVLE_EXTRA_STYLESHEETS=${TAVLE_EXTRA_STYLESHEETS:-}
+      - TAVLE_EMBED_FRAME_ANCESTORS=${TAVLE_EMBED_FRAME_ANCESTORS:-}
       # SECRET_KEY is auto-generated and stored in database on first run.
       # Only set this if you need a consistent key across multiple instances.
       # - SECRET_KEY=${SECRET_KEY}

@@ -5,6 +5,9 @@
 {% block head %}
     <!-- Whiteboard CSS -->
     <link rel="stylesheet" href="/static/css/whiteboard.css">
+    {% for href in tavle_extra_stylesheets %}
+    <link rel="stylesheet" href="{{ href|e }}">
+    {% endfor %}
 
     <!-- Alpine.js (local) -->
     <script defer src="/static/js/vendor/alpine.min.js"></script>
@@ -24,74 +27,91 @@
       type="text/css"
       href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css"
     />
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/thin/style.css"
+    />
+
+    {# Embed mode (?embed=1): when the board is iframed by a parent app, nudge
+       toolbar layout for a narrower viewport; connection + user presence stay
+       visible. CSS-only — same Alpine app everywhere. #}
+    {% if embed %}
+    <style>
+      /* Don't force white: lets optional brand overlay match editor surface-page */
+      body.tavle-embed .whiteboard-canvas--base { background-color: #ffffff !important; }
+      /* Toolbar layout: whiteboard.css (body.tavle-embed #tavle-toolbar-host) */
+    </style>
+    {% endif %}
 {% endblock %}
 
-{% block body_attrs %}class="bg-gray-100 overflow-hidden"{% endblock %}
+{% block body_attrs %}class="bg-gray-100 overflow-hidden{% if embed %} tavle-embed{% endif %}" data-embed="{{ '1' if embed else '0' }}"{% endblock %}
 
 {% block body %}
     <!-- Main Whiteboard Component -->
-    <div x-data="whiteboardApp()" x-init="init()" class="whiteboard-container" :data-mode="mode">
+    <div id="tavle-root" x-data="whiteboardApp()" x-init="init()" class="whiteboard-container" :data-mode="mode">
 
         <!-- Dual Canvas System -->
-        <canvas x-ref="baseCanvas" class="whiteboard-canvas whiteboard-canvas--base"></canvas>
-        <canvas x-ref="activeCanvas" class="whiteboard-canvas whiteboard-canvas--active"></canvas>
+        <canvas id="tavle-canvas-base" x-ref="baseCanvas" class="whiteboard-canvas whiteboard-canvas--base"></canvas>
+        <canvas id="tavle-canvas-active" x-ref="activeCanvas" class="whiteboard-canvas whiteboard-canvas--active"></canvas>
 
         <!-- Floating Tool Palette - Swiss + Whiteboard Style -->
-        <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50">
-            <div class="flex items-center bg-white shadow-xl" style="border: 2px solid #1e1e1e; transform: rotate(-0.3deg);">
-                <!-- Red accent bar -->
-                <div class="w-1.5 h-12 bg-red-500 self-stretch"></div>
-
+        <div id="tavle-toolbar-host" class="tavle-toolbar-host fixed top-4 left-1/2 -translate-x-1/2 z-50">
+            <div id="tavle-toolbar-inner"
+                class="tavle-toolbar-inner flex items-center bg-white shadow-xl"
+                style="border: 2px solid #1e1e1e; transform: rotate(-0.3deg);">
                 <!-- Tool Selection -->
-                <div class="flex items-center gap-0.5 px-2 py-1.5">
-                    <button @click="setMode('draw')"
+                <div id="tavle-toolbar-modes" class="flex items-center gap-0.5 px-2 py-1.5">
+                    <button id="tavle-mode-draw" @click="setMode('draw')"
                         :class="mode === 'draw' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
                         class="p-2.5 transition-all duration-150" 
                         :style="mode === 'draw' ? 'border: 2px solid #1e1e1e; transform: rotate(-2deg);' : 'border: 2px solid transparent;'"
                         :title="t('tooltips.draw')">
-                        <i class="ph ph-pencil-simple text-xl"></i>
+                        <i class="ph-thin ph-pencil-simple text-xl"></i>
                     </button>
-                    <button @click="setMode('erase')"
+                    <button id="tavle-mode-erase" @click="setMode('erase')"
                         :class="mode === 'erase' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
                         class="p-2.5 transition-all duration-150"
                         :style="mode === 'erase' ? 'border: 2px solid #1e1e1e; transform: rotate(1deg);' : 'border: 2px solid transparent;'"
                         :title="t('tooltips.erase')">
-                        <i class="ph ph-eraser text-xl"></i>
+                        <i class="ph-thin ph-eraser text-xl"></i>
                     </button>
-                    <button @click="setMode('select')"
+                    <button id="tavle-mode-select" @click="setMode('select')"
                         :class="mode === 'select' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
                         class="p-2.5 transition-all duration-150"
                         :style="mode === 'select' ? 'border: 2px solid #1e1e1e; transform: rotate(-1deg);' : 'border: 2px solid transparent;'"
                         :title="t('tooltips.select')">
-                        <i class="ph ph-cursor text-xl"></i>
+                        <i class="ph-thin ph-cursor text-xl"></i>
                     </button>
-                    <button @click="setMode('pan')"
+                    <button id="tavle-mode-pan" @click="setMode('pan')"
                         :class="mode === 'pan' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
                         class="p-2.5 transition-all duration-150"
                         :style="mode === 'pan' ? 'border: 2px solid #1e1e1e; transform: rotate(2deg);' : 'border: 2px solid transparent;'"
                         :title="t('tooltips.pan')">
-                        <i class="ph ph-hand text-xl"></i>
+                        <i class="ph-thin ph-hand text-xl"></i>
                     </button>
                 </div>
 
                 <!-- Divider -->
-                <div class="w-0.5 h-8 bg-gray-900 mx-1"></div>
+                <div id="tavle-toolbar-divider-after-modes" class="tavle-toolbar-divider w-0.5 h-8 bg-gray-900 mx-1"></div>
 
                 <!-- Stroke Color -->
-                <div class="flex items-center gap-1 px-2">
-                    <div class="relative" x-data="{ open: false }">
-                        <button @click="open = !open" 
-                            class="w-8 h-8 border-2 border-gray-900 hover:scale-105 transition-transform flex items-center justify-center"
-                            :style="{ backgroundColor: color, transform: 'rotate(2deg)' }">
+                <div id="tavle-toolbar-stroke-color" class="flex items-center gap-1 px-2">
+                    <div id="tavle-stroke-color-wrap" class="relative flex items-center" x-data="{ open: false }">
+                        <button id="tavle-stroke-color-trigger" type="button" @click="open = !open"
+                            class="tavle-stroke-color-swatch shrink-0 transition-all duration-150"
+                            :style="{ backgroundColor: color }"
+                            :title="t('tooltips.strokeColor')">
                         </button>
                         <!-- Color Dropdown -->
-                        <div x-show="open" @click.outside="open = false" x-transition
+                        <div id="tavle-stroke-color-dropdown" x-show="open" @click.outside="open = false" x-transition
                             class="absolute top-full left-0 mt-2 p-4 bg-white shadow-xl z-50 min-w-[220px]"
                             style="border: 2px solid #1e1e1e; transform: rotate(-0.5deg);">
                             <p class="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3" x-text="t('toolbar.strokeColor')"></p>
-                            <div class="grid grid-cols-5 gap-2 mb-4">
-                                <template x-for="c in colorPalette" :key="c">
+                            <div id="tavle-stroke-color-palette" class="grid grid-cols-5 gap-2 mb-4">
+                                <template x-for="(c, idx) in colorPalette" :key="c">
                                     <button @click="setColor(c); open = false" 
+                                        :id="'tavle-palette-' + idx"
                                         :style="{ backgroundColor: c }"
                                         :class="color === c ? 'ring-2 ring-gray-900 ring-offset-2' : ''"
                                         class="w-9 h-9 border-2 border-gray-900 hover:scale-110 transition-transform cursor-pointer">
@@ -101,7 +121,7 @@
                             <div class="pt-3 border-t-2 border-gray-900">
                                 <label class="flex items-center gap-3 cursor-pointer">
                                     <span class="text-xs font-bold text-gray-900 uppercase" x-text="t('toolbar.customColor') + ':'"></span>
-                                    <input type="color" x-model="color" @input="setColor($event.target.value)"
+                                    <input id="tavle-stroke-color-custom" type="color" x-model="color" @input="setColor($event.target.value)"
                                         class="w-10 h-8 cursor-pointer border-2 border-gray-900">
                                 </label>
                             </div>
@@ -110,12 +130,13 @@
                 </div>
 
                 <!-- Divider -->
-                <div class="w-0.5 h-8 bg-gray-900 mx-1"></div>
+                <div id="tavle-toolbar-divider-after-stroke-color" class="tavle-toolbar-divider w-0.5 h-8 bg-gray-900 mx-1"></div>
 
                 <!-- Stroke Width Presets (shown when not erasing) -->
-                <div class="flex items-center gap-1 px-2" x-show="mode !== 'erase'">
+                <div id="tavle-toolbar-stroke-width" class="flex items-center gap-1 px-2" x-show="mode !== 'erase'">
                     <template x-for="sw in strokeWidths" :key="sw.value">
                         <button @click="setStrokeWidth(sw.value)"
+                            :id="'tavle-stroke-width-' + sw.value"
                             :class="strokeWidth == sw.value ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 text-gray-700'"
                             class="w-9 h-9 transition-all duration-150 flex items-center justify-center"
                             :style="strokeWidth == sw.value ? 'border: 2px solid #1e1e1e;' : 'border: 2px solid transparent;'"
@@ -126,9 +147,10 @@
                 </div>
 
                 <!-- Eraser Size Presets (shown when erasing) -->
-                <div class="flex items-center gap-1 px-2" x-show="mode === 'erase'" x-cloak>
+                <div id="tavle-toolbar-eraser-width" class="flex items-center gap-1 px-2" x-show="mode === 'erase'" x-cloak>
                     <template x-for="ew in eraserWidths" :key="ew.value">
                         <button @click="setEraserWidth(ew.value)"
+                            :id="'tavle-eraser-width-' + ew.value"
                             :class="eraserWidth == ew.value ? 'bg-rose-500 text-white' : 'hover:bg-gray-100 text-gray-700'"
                             class="w-9 h-9 transition-all duration-150 flex items-center justify-center"
                             :style="eraserWidth == ew.value ? 'border: 2px solid #1e1e1e;' : 'border: 2px solid transparent;'"
@@ -139,27 +161,30 @@
                 </div>
 
                 <!-- Divider -->
-                <div class="w-0.5 h-8 bg-gray-900 mx-1"></div>
+                <input id="tavle-image-input" type="file" x-ref="imageInput" @change="uploadImage($event)" accept="image/*" class="hidden">
 
-                <!-- Canvas Options -->
-                <div class="flex items-center gap-0.5 px-2">
+                <div id="tavle-toolbar-divider-after-width" class="tavle-toolbar-divider w-0.5 h-8 bg-gray-900 mx-1"></div>
+
+                <div id="tavle-toolbar-secondary" class="flex items-center shrink-0">
+                <div id="tavle-toolbar-canvas-options" class="flex items-center gap-0.5 px-2">
                     <!-- Background Color -->
-                    <div class="relative" x-data="{ open: false }">
-                        <button @click="open = !open" 
+                    <div id="tavle-background-wrap" class="relative" x-data="{ open: false }">
+                        <button id="tavle-background-trigger" @click="open = !open" 
                             :class="backgroundColor !== '#ffffff' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
                             class="p-2.5 transition-all duration-150"
                             :style="backgroundColor !== '#ffffff' ? 'border: 2px solid #1e1e1e;' : 'border: 2px solid transparent;'"
                             :title="t('tooltips.backgroundColor')">
-                            <i class="ph ph-paint-bucket text-xl"></i>
+                            <i class="ph-thin ph-paint-bucket text-xl"></i>
                         </button>
                         <!-- Background Color Dropdown -->
-                        <div x-show="open" @click.outside="open = false" x-transition
+                        <div id="tavle-background-dropdown" x-show="open" @click.outside="open = false" x-transition
                             class="absolute top-full right-0 mt-2 p-3 bg-white shadow-xl z-50 min-w-[180px]"
                             style="border: 2px solid #1e1e1e; transform: rotate(0.5deg);">
                             <p class="text-xs font-bold text-gray-900 uppercase tracking-wider mb-2" x-text="t('toolbar.background')"></p>
-                            <div class="grid grid-cols-5 gap-1.5">
-                                <template x-for="bg in backgroundColors" :key="bg">
+                            <div id="tavle-background-palette" class="grid grid-cols-5 gap-1.5">
+                                <template x-for="(bg, idx) in backgroundColors" :key="bg">
                                     <button @click="setBackgroundColor(bg); open = false" 
+                                        :id="'tavle-background-preset-' + idx"
                                         :style="{ backgroundColor: bg }"
                                         :class="[
                                             backgroundColor === bg ? 'ring-2 ring-gray-900 ring-offset-1' : '',
@@ -172,68 +197,149 @@
                         </div>
                     </div>
                     <!-- Grid Toggle -->
-                    <button @click="toggleGrid()"
+                    <button id="tavle-grid-toggle" @click="toggleGrid()"
                         :class="showGrid ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
                         class="p-2.5 transition-all duration-150"
                         :style="showGrid ? 'border: 2px solid #1e1e1e; transform: rotate(-1deg);' : 'border: 2px solid transparent;'"
                         :title="t('tooltips.toggleGrid')">
-                        <i class="ph ph-grid-four text-xl"></i>
+                        <i class="ph-thin ph-grid-four text-xl"></i>
                     </button>
                 </div>
 
                 <!-- Divider -->
-                <div class="w-0.5 h-8 bg-gray-900 mx-1"></div>
+                <div id="tavle-toolbar-divider-after-canvas-options" class="tavle-toolbar-divider w-0.5 h-8 bg-gray-900 mx-1"></div>
 
                 <!-- Zoom Controls -->
-                <div class="flex items-center gap-0.5 px-2">
-                    <button @click="zoomOut()" 
+                <div id="tavle-toolbar-zoom" class="flex items-center gap-0.5 px-2">
+                    <button id="tavle-zoom-out" @click="zoomOut()" 
                         class="p-2 hover:bg-gray-100 text-gray-700 transition-colors border-2 border-transparent hover:border-gray-300"
                         :title="t('tooltips.zoomOut')">
-                        <i class="ph ph-minus text-lg"></i>
+                        <i class="ph-thin ph-minus text-lg"></i>
                     </button>
-                    <button @click="resetZoom()" 
-                        class="px-2 py-1 hover:bg-gray-100 text-gray-900 text-xs font-bold min-w-[50px] transition-colors uppercase tracking-wide"
+                    <button id="tavle-zoom-reset" @click="resetZoom()" type="button"
+                        class="tavle-toolbar-zoom-readout px-2 py-1 hover:bg-gray-100 text-gray-900 text-xs font-bold min-w-[50px] transition-colors"
                         :title="t('tooltips.resetZoom')"
                         x-text="Math.round(zoom * 100) + '%'">
                     </button>
-                    <button @click="zoomIn()" 
+                    <button id="tavle-zoom-in" @click="zoomIn()" 
                         class="p-2 hover:bg-gray-100 text-gray-700 transition-colors border-2 border-transparent hover:border-gray-300"
                         :title="t('tooltips.zoomIn')">
-                        <i class="ph ph-plus text-lg"></i>
+                        <i class="ph-thin ph-plus text-lg"></i>
                     </button>
                 </div>
 
                 <!-- Divider -->
-                <div class="w-0.5 h-8 bg-gray-900 mx-1"></div>
+                <div id="tavle-toolbar-divider-after-zoom" class="tavle-toolbar-divider w-0.5 h-8 bg-gray-900 mx-1"></div>
 
                 <!-- Actions -->
-                <div class="flex items-center gap-0.5 px-2">
-                    <input type="file" x-ref="imageInput" @change="uploadImage($event)" accept="image/*" class="hidden">
-                    <button @click="$refs.imageInput.click()" 
+                <div id="tavle-toolbar-actions" class="flex items-center gap-0.5 px-2">
+                    <button id="tavle-action-upload" @click="$refs.imageInput.click()" 
                         class="p-2.5 hover:bg-gray-100 text-gray-600 transition-colors border-2 border-transparent hover:border-gray-300"
                         :title="t('tooltips.uploadImage')">
-                        <i class="ph ph-image text-xl"></i>
+                        <i class="ph-thin ph-image text-xl"></i>
                     </button>
-                    <button @click="exportImage()" 
+                    <button id="tavle-action-export" @click="exportImage()" 
                         class="p-2.5 hover:bg-gray-100 text-gray-600 transition-colors border-2 border-transparent hover:border-gray-300"
                         :title="t('tooltips.export')">
-                        <i class="ph ph-export text-xl"></i>
+                        <i class="ph-thin ph-export text-xl"></i>
                     </button>
-                    <button @click="clearCanvas()" 
+                    <button id="tavle-action-clear" @click="clearCanvas()" 
                         class="p-2.5 hover:bg-red-500 text-gray-600 hover:text-white transition-colors border-2 border-transparent hover:border-gray-900"
                         :title="t('tooltips.clear')">
-                        <i class="ph ph-trash text-xl"></i>
+                        <i class="ph-thin ph-trash text-xl"></i>
                     </button>
                 </div>
+                </div>
 
-                <!-- Blue accent bar -->
-                <div class="w-1.5 h-12 bg-blue-500 self-stretch"></div>
+                <!-- Grouped overflow when the bar is wider than the viewport -->
+                <div id="tavle-toolbar-more-wrap" class="flex items-center shrink-0 px-1">
+                    <button id="tavle-toolbar-more-trigger" type="button"
+                        @click="toggleToolbarMore()"
+                        :class="toolbarMoreOpen ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 transition-all duration-150 border-2 border-transparent"
+                        :title="t('toolbar.more')"
+                        :aria-expanded="toolbarMoreOpen">
+                        <i class="ph-thin ph-dots-three-outline text-xl"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="tavle-toolbar-more-panel" x-show="toolbarMoreOpen" @click.outside="closeToolbarMore()" x-transition
+                class="tavle-toolbar-more-panel absolute top-full right-0 mt-2 z-[60] min-w-[220px] max-w-[min(280px,calc(100vw-24px))] p-3 bg-white shadow-xl"
+                style="border: 1px solid rgba(26, 31, 54, 0.12);">
+                        <p class="tavle-toolbar-more-section-label" x-text="t('toolbar.groupCanvas')"></p>
+                        <div class="flex items-center gap-1 mb-3">
+                            <div class="relative">
+                                <button type="button" @click="toolbarBgOpen = !toolbarBgOpen"
+                                    :class="backgroundColor !== '#ffffff' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                                    class="p-2.5 transition-all duration-150 border-2 border-transparent"
+                                    :title="t('tooltips.backgroundColor')">
+                                    <i class="ph-thin ph-paint-bucket text-xl"></i>
+                                </button>
+                                <div x-show="toolbarBgOpen" @click.outside="toolbarBgOpen = false" x-transition
+                                    class="absolute top-full left-0 mt-2 p-3 bg-white shadow-xl z-50 min-w-[180px]"
+                                    style="border: 1px solid rgba(26, 31, 54, 0.12);">
+                                    <p class="text-xs font-bold text-gray-900 uppercase tracking-wider mb-2" x-text="t('toolbar.background')"></p>
+                                    <div class="grid grid-cols-5 gap-1.5">
+                                        <template x-for="(bg, idx) in backgroundColors" :key="'overflow-bg-' + bg">
+                                            <button type="button" @click="setBackgroundColor(bg); toolbarBgOpen = false"
+                                                :style="{ backgroundColor: bg }"
+                                                :class="backgroundColor === bg ? 'ring-2 ring-gray-900 ring-offset-1' : ''"
+                                                class="w-7 h-7 border-2 border-gray-900 hover:scale-110 transition-transform">
+                                            </button>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" @click="toggleGrid(); closeToolbarMore()"
+                                :class="showGrid ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                                class="p-2.5 transition-all duration-150 border-2 border-transparent"
+                                :title="t('tooltips.toggleGrid')">
+                                <i class="ph-thin ph-grid-four text-xl"></i>
+                            </button>
+                        </div>
+                        <p class="tavle-toolbar-more-section-label" x-text="t('toolbar.groupZoom')"></p>
+                        <div class="flex items-center gap-1 mb-3">
+                            <button type="button" @click="zoomOut()"
+                                class="p-2 hover:bg-gray-100 text-gray-700 border-2 border-transparent"
+                                :title="t('tooltips.zoomOut')">
+                                <i class="ph-thin ph-minus text-lg"></i>
+                            </button>
+                            <button type="button" @click="resetZoom()"
+                                class="tavle-toolbar-zoom-readout px-2 py-1 hover:bg-gray-100 text-gray-900 text-xs font-bold min-w-[50px] border-2 border-transparent"
+                                :title="t('tooltips.resetZoom')"
+                                x-text="Math.round(zoom * 100) + '%'">
+                            </button>
+                            <button type="button" @click="zoomIn()"
+                                class="p-2 hover:bg-gray-100 text-gray-700 border-2 border-transparent"
+                                :title="t('tooltips.zoomIn')">
+                                <i class="ph-thin ph-plus text-lg"></i>
+                            </button>
+                        </div>
+                        <p class="tavle-toolbar-more-section-label" x-text="t('toolbar.groupActions')"></p>
+                        <div class="flex items-center gap-1">
+                            <button type="button" @click="$refs.imageInput.click(); closeToolbarMore()"
+                                class="p-2.5 hover:bg-gray-100 text-gray-600 border-2 border-transparent"
+                                :title="t('tooltips.uploadImage')">
+                                <i class="ph-thin ph-image text-xl"></i>
+                            </button>
+                            <button type="button" @click="exportImage(); closeToolbarMore()"
+                                class="p-2.5 hover:bg-gray-100 text-gray-600 border-2 border-transparent"
+                                :title="t('tooltips.export')">
+                                <i class="ph-thin ph-export text-xl"></i>
+                            </button>
+                            <button type="button" @click="clearCanvas(); closeToolbarMore()"
+                                class="p-2.5 hover:bg-red-500 text-gray-600 hover:text-white border-2 border-transparent"
+                                :title="t('tooltips.clear')">
+                                <i class="ph-thin ph-trash text-xl"></i>
+                            </button>
+                        </div>
             </div>
         </div>
 
         <!-- Connection Status - Swiss Style -->
-        <div class="fixed bottom-4 left-4 z-50">
-            <div class="flex items-center gap-2 px-3 py-2 bg-white shadow-lg text-sm"
+        <div id="tavle-connection-wrap" class="fixed bottom-4 left-4 z-50">
+            <div id="tavle-connection-status" class="flex items-center gap-2 px-3 py-2 bg-white shadow-lg text-sm"
                 style="border: 2px solid #1e1e1e; transform: rotate(-1deg);"
                 :class="rateLimited ? 'text-amber-600' : (connected ? 'text-emerald-600' : 'text-gray-400')"
                 :title="rateLimited ? t('connection.rateLimitedHint') : ''">
@@ -243,9 +349,9 @@
         </div>
 
         <!-- User Panel (bottom right) - Swiss + Whiteboard Style -->
-        <div class="fixed bottom-4 right-4 z-50" x-show="userName">
+        <div id="tavle-user-panel-wrap" class="fixed bottom-4 right-4 z-50" x-show="userName">
             <!-- Connected users panel -->
-            <div class="bg-white shadow-xl overflow-hidden min-w-[220px]" style="border: 2px solid #1e1e1e; transform: rotate(0.5deg);">
+            <div id="tavle-user-panel" class="bg-white shadow-xl overflow-hidden min-w-[220px]" style="border: 2px solid #1e1e1e; transform: rotate(0.5deg);">
                 <!-- Header with your name -->
                 <div class="px-3 py-2.5 bg-yellow-400 border-b-2 border-gray-900 flex items-center justify-between">
                     <div class="flex items-center gap-2">
@@ -255,12 +361,12 @@
                         <button @click="editUserName()" 
                             class="p-1 text-gray-700 hover:text-gray-900 transition-colors"
                             :title="t('userPanel.editName')">
-                            <i class="ph ph-pencil-simple text-sm"></i>
+                            <i class="ph-thin ph-pencil-simple text-sm"></i>
                         </button>
                     </div>
                     <button @click="toggleUserPanel()" 
                         class="text-gray-900 hover:text-gray-700 transition-colors">
-                        <i class="ph text-lg transition-transform" :class="userPanelExpanded ? 'ph-caret-down' : 'ph-caret-up'"></i>
+                        <i class="ph-thin text-lg transition-transform" :class="userPanelExpanded ? 'ph-caret-down' : 'ph-caret-up'"></i>
                     </button>
                 </div>
 
@@ -280,14 +386,14 @@
                             <button @click="jumpToUser(user.oduserId)" 
                                 class="p-1 text-gray-500 hover:text-red-500 transition-colors"
                                 :title="t('userPanel.jumpToUser')">
-                                <i class="ph ph-map-pin text-base"></i>
+                                <i class="ph-thin ph-map-pin text-base"></i>
                             </button>
                         </div>
                     </template>
                 </div>
 
                 <!-- Bottom accent -->
-                <div class="flex">
+                <div id="tavle-user-panel-accent" class="flex">
                     <div class="flex-1 h-1 bg-red-500"></div>
                     <div class="flex-1 h-1 bg-blue-500"></div>
                     <div class="flex-1 h-1 bg-gray-900"></div>
@@ -340,7 +446,7 @@
                             <!-- Playful icon with sketchy border -->
                             <div class="relative flex-shrink-0">
                                 <div class="w-14 h-14 bg-yellow-400 flex items-center justify-center" style="border: 2px solid #1e1e1e; transform: rotate(3deg);">
-                                    <i class="ph ph-pencil-line text-2xl text-gray-900"></i>
+                                    <i class="ph-thin ph-pencil-line text-2xl text-gray-900"></i>
                                 </div>
                             </div>
                             <div>
@@ -470,6 +576,9 @@
                 backgroundColor: prefs.backgroundColor,
                 eraserWidth: prefs.eraserWidth,
 
+                toolbarMoreOpen: false,
+                toolbarBgOpen: false,
+
                 // User state
                 userName: '',  // Will be set in init() with sanitization
                 userNameInput: '',
@@ -559,6 +668,19 @@
                     if (this.userName) {
                         await this.startWhiteboard();
                     }
+
+                },
+
+                toggleToolbarMore() {
+                    this.toolbarMoreOpen = !this.toolbarMoreOpen;
+                    if (!this.toolbarMoreOpen) {
+                        this.toolbarBgOpen = false;
+                    }
+                },
+
+                closeToolbarMore() {
+                    this.toolbarMoreOpen = false;
+                    this.toolbarBgOpen = false;
                 },
 
                 async startWhiteboard() {

@@ -3,9 +3,12 @@ Main Flask application with SocketIO for real-time collaboration.
 Security-hardened version with input validation, session management, and rate limiting.
 """
 import os
+import re
 import logging
 from logging.handlers import RotatingFileHandler
-from flask import Flask, render_template, abort, jsonify, redirect, url_for
+from urllib.parse import urlparse
+
+from flask import Flask, render_template, request, abort, jsonify, redirect, url_for
 from flask_socketio import SocketIO
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -90,6 +93,57 @@ app.config['SECRET_KEY'] = get_secret_key()
 # Setup logging (creates security_logger as module-level for import by other modules)
 security_logger = setup_logging(app)
 
+
+def parse_tavle_extra_stylesheets(raw: str) -> tuple[list[str], list[str]]:
+    """Parse ``TAVLE_EXTRA_STYLESHEETS`` env: comma-separated paths or https? URLs.
+
+    Returns (hrefs_for_link_tags, unique_origins_for_csp). Paths must start with a
+    single ``/`` (same-origin). ``//host`` protocol-relative URLs are rejected.
+    """
+    hrefs: list[str] = []
+    csp_origins: list[str] = []
+    if not raw or not str(raw).strip():
+        return hrefs, csp_origins
+    for part in str(raw).split(","):
+        s = part.strip()
+        if not s:
+            continue
+        if s.startswith("//"):
+            logger.warning("Ignoring protocol-relative TAVLE_EXTRA_STYLESHEETS entry")
+            continue
+        if s.startswith("/"):
+            hrefs.append(s)
+            continue
+        parsed = urlparse(s)
+        if parsed.scheme in ("http", "https") and parsed.netloc:
+            hrefs.append(s)
+            origin = f"{parsed.scheme}://{parsed.netloc}"
+            if origin not in csp_origins:
+                csp_origins.append(origin)
+            continue
+        logger.warning("Ignoring invalid TAVLE_EXTRA_STYLESHEETS entry: %r", s[:120])
+    return hrefs, csp_origins
+
+
+def _resolve_tavle_extra_stylesheets_env() -> str:
+    """Raw ``TAVLE_EXTRA_STYLESHEETS`` env; unset or empty means no extra sheets."""
+    return (os.environ.get("TAVLE_EXTRA_STYLESHEETS") or "").strip()
+
+
+_extra_sheet_hrefs, _extra_sheet_csp_origins = parse_tavle_extra_stylesheets(
+    _resolve_tavle_extra_stylesheets_env()
+)
+app.config["TAVLE_EXTRA_STYLESHEET_HREFS"] = _extra_sheet_hrefs
+app.config["TAVLE_EXTRA_STYLESHEET_CSP_ORIGINS"] = _extra_sheet_csp_origins
+if _extra_sheet_hrefs:
+    logger.info("Tavle extra stylesheets: %s", ", ".join(_extra_sheet_hrefs))
+if os.environ.get("CSP_POLICY", "").strip() and _extra_sheet_csp_origins:
+    logger.warning(
+        "CSP_POLICY is set while TAVLE_EXTRA_STYLESHEETS includes external URLs; "
+        "extend style-src and font-src in CSP_POLICY to include: %s",
+        " ".join(_extra_sheet_csp_origins),
+    )
+
 # =============================================================================
 # Production Security Checks
 # =============================================================================
@@ -140,26 +194,103 @@ register_socketio_handlers(socketio)
 # Security Headers
 # =============================================================================
 
-# Content Security Policy - now using local vendor files, much stricter CSP possible
-CSP_POLICY = os.environ.get('CSP_POLICY', (
-    "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "  # 'unsafe-eval' needed for some libs, consider removing if possible
-    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-    "img-src 'self' data: blob:; "
-    "connect-src 'self' ws: wss:; "
-    "font-src 'self' https://cdn.jsdelivr.net; "
-    "frame-ancestors 'self';"
-))
+
+def _is_production():
+    return (
+        os.environ.get('FLASK_ENV') == 'production' or
+        os.environ.get('ENVIRONMENT') == 'production'
+    )
+
+
+def _frame_ancestors_clause():
+    """Who may embed Tavle board pages in an iframe.
+
+    Tavle often runs on a different host/port than the parent app (e.g. :5050 vs :8000),
+    so ``frame-ancestors 'self'`` alone blocks cross-origin iframe embeds.
+    """
+    raw = os.environ.get('TAVLE_EMBED_FRAME_ANCESTORS', '').strip()
+    extras: list[str] = []
+    if raw:
+        extras = [x.strip() for x in raw.split(',') if x.strip()]
+    else:
+        ao_raw = os.environ.get('ALLOWED_ORIGINS', '*').strip()
+        if ao_raw and ao_raw != '*':
+            extras = [x.strip() for x in ao_raw.split(',') if x.strip()]
+        # Gunicorn often sets FLASK_ENV=production while a local parent app still runs on
+        # localhost:8000. With ALLOWED_ORIGINS=* there is no concrete origin list
+        # to reuse — add typical local dev URLs so embeds work.
+        if not extras and (not _is_production() or ao_raw in ('*', '')):
+            extras = ['http://localhost:8000', 'http://127.0.0.1:8000']
+    parts: list[str] = []
+    for token in ["'self'"] + extras:
+        if token not in parts:
+            parts.append(token)
+    return 'frame-ancestors ' + ' '.join(parts)
+
+
+def _build_default_csp():
+    fa = _frame_ancestors_clause()
+    extra_origins = list(app.config.get("TAVLE_EXTRA_STYLESHEET_CSP_ORIGINS") or [])
+    origins_suffix = (" " + " ".join(extra_origins)) if extra_origins else ""
+    style_src = f"'self' 'unsafe-inline' https://cdn.jsdelivr.net{origins_suffix}"
+    font_src = f"'self' https://cdn.jsdelivr.net{origins_suffix}"
+    return (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+        f"style-src {style_src}; "
+        "img-src 'self' data: blob:; "
+        "connect-src 'self' ws: wss:; "
+        f"font-src {font_src}; "
+        f"{fa};"
+    )
+
+
+_FRAME_ANCESTORS_DIRECTIVE_RE = re.compile(
+    r"\s*frame-ancestors\s+[^;]+;?",
+    re.IGNORECASE,
+)
+
+
+def _merge_csp_with_frame_ancestors(policy: str) -> str:
+    """Remove any ``frame-ancestors`` from *policy*, then append our directive.
+
+    ``CSP_POLICY`` is often set in Docker/.env to a legacy value ending in
+    ``frame-ancestors 'self'``, which blocks the parent app when it runs on another
+    origin (e.g. :8000 vs Tavle :5050). Always reconcile embed parents here.
+    """
+    cleaned = _FRAME_ANCESTORS_DIRECTIVE_RE.sub("", policy)
+    cleaned = re.sub(r";{2,}", ";", cleaned)
+    cleaned = cleaned.strip().strip(";").strip()
+    fa = _frame_ancestors_clause()
+    if not cleaned:
+        return _build_default_csp()
+    return f"{cleaned}; {fa}"
+
+
+def _resolve_csp_policy() -> str:
+    raw = os.environ.get("CSP_POLICY", "").strip()
+    if raw:
+        return _merge_csp_with_frame_ancestors(raw)
+    return _build_default_csp()
+
+
+@app.context_processor
+def inject_tavle_theme():
+    return {
+        "tavle_extra_stylesheets": app.config.get("TAVLE_EXTRA_STYLESHEET_HREFS", []),
+    }
 
 
 @app.after_request
 def add_security_headers(response):
     """Add security headers to all responses."""
     response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    # Framing is governed only by CSP ``frame-ancestors`` (see ``_frame_ancestors_clause``).
+    # ``X-Frame-Options: SAMEORIGIN`` would forbid cross-origin embeds (e.g. parent :8000
+    # iframing Tavle :5050) on browsers that honor XFO alongside CSP.
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    response.headers['Content-Security-Policy'] = CSP_POLICY
+    response.headers['Content-Security-Policy'] = _resolve_csp_policy()
     response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
     return response
 
@@ -276,11 +407,22 @@ def api_docs():
 @app.route('/b/<token>')
 @limiter.limit("120 per minute")
 def board(token):
-    """Render whiteboard for a specific document using access token."""
+    """Render whiteboard for a specific document using access token.
+
+    Supports an ``embed=1`` query param for iframe hosts: adjusts
+    toolbar placement for a framed viewport; connection status and user panel
+    remain visible.
+    """
     doc = get_document_by_token(token)
     if not doc:
         abort(403)
-    return render_template('index.html', token_id=token, access_token=token)
+    embed = (request.args.get('embed') or '').strip() in ('1', 'true', 'yes')
+    return render_template(
+        'index.html',
+        token_id=token,
+        access_token=token,
+        embed=embed,
+    )
 
 
 @app.route('/get/<token>')

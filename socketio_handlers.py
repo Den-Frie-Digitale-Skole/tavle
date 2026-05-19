@@ -8,7 +8,7 @@ from collections import defaultdict
 from flask import request
 from flask_socketio import join_room, leave_room, emit
 
-from models import get_document_by_token, Stroke, Image
+from models import get_document_by_token, Document, Stroke, Image
 from validators import (
     validate_join_event,
     validate_stroke_point_event,
@@ -152,6 +152,22 @@ def get_doc_from_token(token):
     if not doc:
         return None, None
     return doc, doc.id
+
+
+def _bump_doc_version_silently(doc_id):
+    """Increment the document version counter without raising.
+
+    Called from socket event handlers on every successful mutation. We
+    swallow errors deliberately - failing to bump the cache invalidator
+    shouldn't drop a stroke / image that's already been persisted.
+    """
+    if not doc_id:
+        return
+    try:
+        doc = Document.get_by_id(doc_id)
+        doc.bump_version()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning(f'Failed to bump version for doc {doc_id}: {exc}')
 
 
 # =============================================================================
@@ -353,7 +369,7 @@ def register_socketio_handlers(socketio):
             )
             stroke.id = validated['strokeId']
             stroke.save(force_insert=True)
-            doc.save()
+            doc.bump_version()
         except Exception as e:
             logger.error(f'Error saving stroke: {e}')
             emit('error', {'message': 'Failed to save stroke'})
@@ -397,6 +413,7 @@ def register_socketio_handlers(socketio):
             stroke = Stroke.get((Stroke.id == stroke_id) & (Stroke.document_id == doc_id))
             stroke.set_transform(validated['transform'])
             stroke.save()
+            _bump_doc_version_silently(doc_id)
         except Stroke.DoesNotExist:
             logger.warning(f'Stroke not found: {stroke_id}')
             return  # Silently ignore - may be deleted by another user
@@ -438,6 +455,8 @@ def register_socketio_handlers(socketio):
             deleted = Stroke.delete().where(
                 (Stroke.id.in_(stroke_ids)) & (Stroke.document_id == doc_id)
             ).execute()
+            if deleted:
+                _bump_doc_version_silently(doc_id)
             logger.info(f'Deleted {deleted} strokes from doc {doc_id[:8]}...')
         except Exception as e:
             logger.error(f'Error deleting strokes: {e}')
@@ -466,6 +485,8 @@ def register_socketio_handlers(socketio):
         try:
             stroke_count = Stroke.delete().where(Stroke.document_id == doc_id).execute()
             image_count = Image.delete().where(Image.document_id == doc_id).execute()
+            if stroke_count or image_count:
+                _bump_doc_version_silently(doc_id)
             
             # Log this destructive action to security log
             security_logger.warning(
@@ -529,7 +550,7 @@ def register_socketio_handlers(socketio):
             )
             image.id = validated['imageId']
             image.save(force_insert=True)
-            doc.save()
+            doc.bump_version()
         except Exception as e:
             logger.error(f'Error saving image: {e}')
             emit('error', {'message': 'Failed to save image'})
@@ -584,6 +605,7 @@ def register_socketio_handlers(socketio):
             if 'height' in validated:
                 image.height = validated['height']
             image.save()
+            _bump_doc_version_silently(doc_id)
         except Image.DoesNotExist:
             logger.warning(f'Image not found: {image_id}')
             return  # Silently ignore - may be deleted by another user
@@ -622,6 +644,8 @@ def register_socketio_handlers(socketio):
             deleted = Image.delete().where(
                 (Image.id.in_(image_ids)) & (Image.document_id == doc_id)
             ).execute()
+            if deleted:
+                _bump_doc_version_silently(doc_id)
             logger.info(f'Deleted {deleted} images from doc {doc_id[:8]}...')
         except Exception as e:
             logger.error(f'Error deleting images: {e}')

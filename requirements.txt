@@ -7,6 +7,9 @@ eventlet==0.34.2
 python-socketio==5.10.0
 requests==2.31.0
 
+# Server-side board rasterization (stroke + image -> PNG)
+Pillow==10.4.0
+
 # PostgreSQL support (production)
 psycopg2-binary==2.9.9
 

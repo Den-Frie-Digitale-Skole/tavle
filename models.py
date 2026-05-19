@@ -10,7 +10,8 @@ import secrets
 from datetime import datetime
 from peewee import (
     Model, SqliteDatabase,
-    CharField, DateTimeField, FloatField, TextField, ForeignKeyField, BooleanField
+    CharField, DateTimeField, FloatField, TextField, ForeignKeyField, BooleanField,
+    IntegerField,
 )
 import logging
 
@@ -74,6 +75,14 @@ class Document(BaseModel):
     access_token = CharField(max_length=64, unique=True, index=True)  # Long token for URL access
     name = CharField(max_length=255, default='Untitled')
     is_active = BooleanField(default=True)  # Can be deactivated by admin
+    # Monotonic change counter bumped on every stroke/image mutation.
+    # Cheap signal for `has this changed since I last looked?` checks
+    # without diffing payloads or relying on clock skew.
+    version = IntegerField(default=0)
+    # PNG render cache (base64, no data: prefix). Keyed by `render_cache_version`
+    # so we can decide cheaply whether the cached image is still fresh.
+    render_cache = TextField(null=True)
+    render_cache_version = IntegerField(null=True)
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
 
@@ -81,12 +90,40 @@ class Document(BaseModel):
         self.updated_at = datetime.utcnow()
         return super().save(*args, **kwargs)
 
+    def bump_version(self):
+        """Increment `version` and invalidate the render cache.
+
+        Callers should invoke this on any stroke/image mutation. We keep
+        invalidation eager so consumers fetching a render after a write
+        always get a fresh PNG, even before the next save() of the
+        document itself.
+
+        Also schedules a debounced outbound webhook notification (no-op
+        when not configured).
+        """
+        try:
+            self.version = (self.version or 0) + 1
+        except TypeError:
+            self.version = 1
+        self.render_cache = None
+        self.render_cache_version = None
+        self.save()
+        try:
+            # Local import to avoid circular dependency at module load
+            # (webhooks.py doesn't import models, but keeping the cost
+            # close to the call site lets us hot-reload either independently).
+            from webhooks import notify_board_updated
+            notify_board_updated(self.id, int(self.version or 0), self.updated_at.isoformat())
+        except Exception as exc:  # pragma: no cover - never block writes
+            logger.debug(f'Webhook scheduling skipped: {exc}')
+
     def to_dict(self, include_strokes=True):
         result = {
             'id': self.id,
             'access_token': self.access_token,
             'name': self.name,
             'is_active': self.is_active,
+            'version': int(self.version or 0),
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
         }
@@ -192,6 +229,11 @@ class Image(BaseModel):
     height = FloatField(default=200)  # Display height
     transform = TextField(default='{"x": 0, "y": 0, "scale": 1}')  # JSON: {x, y, scale}
     z_index = FloatField(default=0)  # Z-order for layering (shared with strokes)
+    # Free-form JSON metadata. Integrators use this to tag images they inject
+    # (e.g. `{"source": "my_app", "kind": "task_card", "task_id": "..."}`)
+    # so the integrator can find/remove its own insertions without affecting
+    # user-drawn content.
+    meta = TextField(null=True)
     created_at = DateTimeField(default=datetime.now)
 
     def get_transform(self):
@@ -201,6 +243,24 @@ class Image(BaseModel):
     def set_transform(self, transform_dict):
         """Serialize transform to JSON."""
         self.transform = json.dumps(transform_dict)
+
+    def get_meta(self):
+        """Parse meta JSON, defaulting to an empty dict."""
+        if not self.meta:
+            return {}
+        try:
+            value = json.loads(self.meta)
+        except json.JSONDecodeError:
+            logger.error(f"Failed to decode meta JSON for image {self.id}")
+            return {}
+        return value if isinstance(value, dict) else {}
+
+    def set_meta(self, meta_dict):
+        """Serialize meta dict to JSON (None clears it)."""
+        if meta_dict is None:
+            self.meta = None
+        else:
+            self.meta = json.dumps(meta_dict)
 
     def to_dict(self):
         return {
@@ -213,11 +273,12 @@ class Image(BaseModel):
             'height': self.height,
             'transform': self.get_transform(),
             'zIndex': self.z_index,
+            'meta': self.get_meta(),
             'createdAt': self.created_at.isoformat()
         }
 
     @classmethod
-    def create_new(cls, document_id, data, x=0, y=0, width=200, height=200, transform=None, z_index=0):
+    def create_new(cls, document_id, data, x=0, y=0, width=200, height=200, transform=None, z_index=0, meta=None):
         """Create a new image with a generated UUID."""
         image_id = str(uuid.uuid4())
         image = cls(
@@ -232,6 +293,8 @@ class Image(BaseModel):
         )
         if transform:
             image.set_transform(transform)
+        if meta is not None:
+            image.set_meta(meta)
         return image
 
 
@@ -277,40 +340,46 @@ def init_db():
     _run_migrations()
 
 
+def _table_columns(table_name):
+    """Return the list of column names for a table, or [] if unknown."""
+    try:
+        cursor = db.execute_sql(f"PRAGMA table_info({table_name})")
+        return [row[1] for row in cursor.fetchall()]
+    except Exception:
+        return []
+
+
+def _add_column_if_missing(table, column, ddl_type, default_sql='NULL'):
+    """Idempotently add a column to a table on either SQLite or PostgreSQL."""
+    columns = _table_columns(table)
+    if columns and column in columns:
+        return
+    try:
+        logger.info(f"Migrating: Adding {column} column to {table} table")
+        db.execute_sql(
+            f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type} DEFAULT {default_sql}"
+        )
+        return
+    except Exception as e:
+        logger.warning(f"{table}.{column} migration via ALTER failed: {e}")
+    try:
+        db.execute_sql(
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl_type} DEFAULT {default_sql}"
+        )
+    except Exception:
+        pass
+
+
 def _run_migrations():
     """Run database migrations for schema updates."""
-    # Migration: Add z_index column to Stroke and Image tables
-    try:
-        # Check if z_index column exists in Stroke table
-        cursor = db.execute_sql("PRAGMA table_info(stroke)")
-        columns = [row[1] for row in cursor.fetchall()]
-        
-        if 'z_index' not in columns:
-            logger.info("Migrating: Adding z_index column to Stroke table")
-            db.execute_sql("ALTER TABLE stroke ADD COLUMN z_index REAL DEFAULT 0")
-    except Exception as e:
-        logger.warning(f"Stroke migration check failed (may be PostgreSQL or new DB): {e}")
-        # For PostgreSQL, try different syntax
-        try:
-            db.execute_sql("ALTER TABLE stroke ADD COLUMN IF NOT EXISTS z_index REAL DEFAULT 0")
-        except Exception:
-            pass  # Column might already exist or DB doesn't support IF NOT EXISTS
-    
-    try:
-        # Check if z_index column exists in Image table
-        cursor = db.execute_sql("PRAGMA table_info(image)")
-        columns = [row[1] for row in cursor.fetchall()]
-        
-        if 'z_index' not in columns:
-            logger.info("Migrating: Adding z_index column to Image table")
-            db.execute_sql("ALTER TABLE image ADD COLUMN z_index REAL DEFAULT 0")
-    except Exception as e:
-        logger.warning(f"Image migration check failed (may be PostgreSQL or new DB): {e}")
-        # For PostgreSQL, try different syntax
-        try:
-            db.execute_sql("ALTER TABLE image ADD COLUMN IF NOT EXISTS z_index REAL DEFAULT 0")
-        except Exception:
-            pass  # Column might already exist or DB doesn't support IF NOT EXISTS
+    _add_column_if_missing('stroke', 'z_index', 'REAL', '0')
+    _add_column_if_missing('image', 'z_index', 'REAL', '0')
+
+    # Phase 1: change-tracking + render cache + image meta.
+    _add_column_if_missing('document', 'version', 'INTEGER', '0')
+    _add_column_if_missing('document', 'render_cache', 'TEXT', 'NULL')
+    _add_column_if_missing('document', 'render_cache_version', 'INTEGER', 'NULL')
+    _add_column_if_missing('image', 'meta', 'TEXT', 'NULL')
 
 
 def get_or_create_document(doc_id):
