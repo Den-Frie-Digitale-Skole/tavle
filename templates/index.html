@@ -43,9 +43,25 @@
       /* Toolbar layout: whiteboard.css (body.tavle-embed #tavle-toolbar-host) */
     </style>
     {% endif %}
+
+    {# Hide name/loading overlays before Alpine when the viewer is already known #}
+    <script>
+      (function () {
+        try {
+          var params = new URLSearchParams(window.location.search);
+          var name = (params.get("name") || localStorage.getItem("whiteboardUserName") || "").trim();
+          if (name) {
+            document.documentElement.classList.add("tavle-has-name");
+          }
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
+    <style>
+      html.tavle-has-name #tavle-name-overlay { display: none !important; }
+    </style>
 {% endblock %}
 
-{% block body_attrs %}class="bg-gray-100 overflow-hidden{% if embed %} tavle-embed{% endif %}" data-embed="{{ '1' if embed else '0' }}"{% endblock %}
+{% block body_attrs %}class="bg-gray-100 overflow-hidden{% if embed %} tavle-embed{% endif %}{% if nohud %} tavle-nohud{% endif %}{% if readonly %} tavle-readonly{% endif %}" data-embed="{{ '1' if embed else '0' }}" data-readonly="{{ '1' if readonly else '0' }}"{% endblock %}
 
 {% block body %}
     <!-- Main Whiteboard Component -->
@@ -349,7 +365,7 @@
         </div>
 
         <!-- User Panel (bottom right) - Swiss + Whiteboard Style -->
-        <div id="tavle-user-panel-wrap" class="fixed bottom-4 right-4 z-50" x-show="userName">
+        <div id="tavle-user-panel-wrap" class="fixed bottom-4 right-4 z-50" x-cloak x-show="userName">
             <!-- Connected users panel -->
             <div id="tavle-user-panel" class="bg-white shadow-xl overflow-hidden min-w-[220px]" style="border: 2px solid #1e1e1e; transform: rotate(0.5deg);">
                 <!-- Header with your name -->
@@ -402,7 +418,7 @@
         </div>
 
         <!-- Loading Overlay - Swiss Style -->
-        <div x-show="loading && userName" x-transition class="absolute inset-0 flex items-center justify-center z-50" style="background: #f5f5f0;">
+        <div id="tavle-loading-overlay" x-cloak x-show="loading && userName" x-transition class="absolute inset-0 flex items-center justify-center z-50" style="background: #f5f5f0;">
             <div class="text-center bg-white p-8 shadow-xl" style="border: 3px solid #1e1e1e; transform: rotate(-0.5deg);">
                 <div class="h-1.5 bg-red-500 -mt-8 -mx-8 mb-6"></div>
                 <div class="w-12 h-12 border-4 border-gray-200 border-t-gray-900 animate-spin mx-auto"></div>
@@ -416,7 +432,7 @@
         </div>
 
         <!-- Name Entry Modal (shown before whiteboard) -->
-        <div x-show="!userName" class="absolute inset-0 flex items-center justify-center z-[100]" style="background: #f5f5f0;">
+        <div id="tavle-name-overlay" x-cloak x-show="!userName" class="absolute inset-0 flex items-center justify-center z-[100]" style="background: #f5f5f0;">
             <!-- Swiss-style geometric decorations -->
             <div class="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
                 <!-- Bold geometric shapes -->
@@ -565,6 +581,7 @@
                 },
 
                 // UI State (loaded from preferences)
+                readonly: {{ 'true' if readonly else 'false' }},
                 mode: 'draw',
                 color: prefs.color,
                 strokeWidth: prefs.strokeWidth,
@@ -645,6 +662,10 @@
                     // Set document title based on language
                     document.title = this.t('appName');
 
+                    if (this.readonly) {
+                        this.mode = 'pan';
+                    }
+
                     // ``?name=`` from embed hosts (e.g. Studito student workspace)
                     const urlName = new URLSearchParams(window.location.search).get('name');
                     if (urlName) {
@@ -702,8 +723,15 @@
                     this.whiteboard = new Whiteboard(
                         this.$refs.baseCanvas,
                         this.$refs.activeCanvas,
-                        { color: this.color, strokeWidth: this.strokeWidth }
+                        {
+                            color: this.color,
+                            strokeWidth: this.strokeWidth,
+                            readonly: this.readonly,
+                        }
                     );
+                    if (this.readonly) {
+                        this.mode = 'pan';
+                    }
 
                     // Apply additional saved preferences
                     this.whiteboard.setBackgroundColor(this.backgroundColor);

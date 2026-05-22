@@ -202,6 +202,33 @@ def _is_production():
     )
 
 
+def _expand_localhost_origin_pairs(origins: list[str]) -> list[str]:
+    """Add localhost <-> 127.0.0.1 variants for the same scheme/port."""
+    out: list[str] = []
+    seen: set[str] = set()
+    pending = list(origins)
+    while pending:
+        origin = pending.pop(0)
+        if not origin or origin in seen:
+            continue
+        seen.add(origin)
+        out.append(origin)
+        parsed = urlparse(origin)
+        if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+            continue
+        port_suffix = f':{parsed.port}' if parsed.port else ''
+        alt_host = None
+        if parsed.hostname == 'localhost':
+            alt_host = '127.0.0.1'
+        elif parsed.hostname == '127.0.0.1':
+            alt_host = 'localhost'
+        if alt_host:
+            alt = f'{parsed.scheme}://{alt_host}{port_suffix}'
+            if alt not in seen:
+                pending.append(alt)
+    return out
+
+
 def _frame_ancestors_clause():
     """Who may embed Tavle board pages in an iframe.
 
@@ -222,7 +249,7 @@ def _frame_ancestors_clause():
         if not extras and (not _is_production() or ao_raw in ('*', '')):
             extras = ['http://localhost:8000', 'http://127.0.0.1:8000']
     parts: list[str] = []
-    for token in ["'self'"] + extras:
+    for token in ["'self'"] + _expand_localhost_origin_pairs(extras):
         if token not in parts:
             parts.append(token)
     return 'frame-ancestors ' + ' '.join(parts)
@@ -412,18 +439,28 @@ def board(token):
     Supports query params for iframe hosts:
 
     * ``embed=1`` — adjusts toolbar placement for a framed viewport
+    * ``nohud=1`` — hide toolbar and connection/user chrome (live gallery tiles)
+    * ``readonly=1`` — watch-only: no local drawing or canvas interaction
     * ``name=<display name>`` — skip the name picker and join as that user
       (e.g. Studito passes the logged-in student's username)
     """
     doc = get_document_by_token(token)
     if not doc:
         abort(403)
-    embed = (request.args.get('embed') or '').strip() in ('1', 'true', 'yes')
+
+    def _query_flag(name: str) -> bool:
+        return (request.args.get(name) or '').strip() in ('1', 'true', 'yes')
+
+    embed = _query_flag('embed')
+    nohud = _query_flag('nohud')
+    readonly = _query_flag('readonly')
     return render_template(
         'index.html',
         token_id=token,
         access_token=token,
         embed=embed,
+        nohud=nohud,
+        readonly=readonly,
     )
 
 

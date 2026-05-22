@@ -39,6 +39,9 @@ class Whiteboard {
         this.minZoom = 0.1;
         this.maxZoom = 5;
 
+        // Watch-only embed (?readonly=1): receive remote updates, no local edits
+        this.readonly = options.readonly === true;
+
         // Interaction mode
         this.mode = 'draw';  // 'draw' | 'select' | 'pan' | 'erase'
         this.isDrawing = false;
@@ -146,6 +149,9 @@ class Whiteboard {
     }
 
     _onPaste(e) {
+        if (this.readonly) {
+            return;
+        }
         const items = e.clipboardData?.items;
         if (!items) return;
 
@@ -226,6 +232,9 @@ class Whiteboard {
     }
 
     _onPointerDown(e) {
+        if (this.readonly) {
+            return;
+        }
         e.preventDefault();
         const point = this._getCanvasPoint(e);
         this.lastPointer = { x: e.clientX, y: e.clientY };
@@ -380,6 +389,9 @@ class Whiteboard {
     }
 
     _onPointerMove(e) {
+        if (this.readonly) {
+            return;
+        }
         e.preventDefault();
         const point = this._getCanvasPoint(e);
         const clientPoint = { x: e.clientX, y: e.clientY };
@@ -752,6 +764,9 @@ class Whiteboard {
     }
 
     _onWheel(e) {
+        if (this.readonly) {
+            return;
+        }
         e.preventDefault();
 
         // Don't process while actively drawing - it causes canvas redraw
@@ -784,6 +799,9 @@ class Whiteboard {
     }
 
     _onKeyDown(e) {
+        if (this.readonly) {
+            return;
+        }
         // Space for pan mode
         if (e.code === 'Space' && !this.isDrawing) {
             this.mode = 'pan';

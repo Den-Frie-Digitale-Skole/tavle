@@ -1,6 +1,10 @@
 /* Whiteboard CSS - Canvas & UI */
 /* Swiss + Playful Whiteboard Style */
 
+[x-cloak] {
+    display: none !important;
+}
+
 /* Percentage heights follow the iframe / tab viewport instead of 100vh (broken inside nested iframes). */
 html,
 body {
@@ -554,4 +558,18 @@ body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner .tavle-toolbar-zoom-re
         margin-left: 0;
         margin-right: 0;
     }
+}
+
+/* No HUD (?nohud=1): live gallery tiles — canvas only */
+body.tavle-nohud #tavle-toolbar-host,
+body.tavle-nohud #tavle-connection-wrap,
+body.tavle-nohud #tavle-user-panel-wrap {
+    display: none !important;
+}
+
+/* Read-only watch (?readonly=1): still receive socket updates */
+body.tavle-readonly .whiteboard-canvas--active,
+body.tavle-readonly .whiteboard-canvas--base {
+    pointer-events: none;
+    cursor: default;
 }
