@@ -53,6 +53,10 @@
           if (name) {
             document.documentElement.classList.add("tavle-has-name");
           }
+          var ro = (params.get("readonly") || "").trim().toLowerCase();
+          if (ro === "1" || ro === "true" || ro === "yes") {
+            document.documentElement.classList.add("tavle-view-only");
+          }
         } catch (e) { /* ignore */ }
       })();
     </script>
@@ -61,7 +65,7 @@
     </style>
 {% endblock %}
 
-{% block body_attrs %}class="bg-gray-100 overflow-hidden{% if embed %} tavle-embed{% endif %}{% if nohud %} tavle-nohud{% endif %}{% if readonly %} tavle-readonly{% endif %}" data-embed="{{ '1' if embed else '0' }}" data-readonly="{{ '1' if readonly else '0' }}"{% endblock %}
+{% block body_attrs %}class="bg-gray-100 overflow-hidden{% if embed %} tavle-embed{% endif %}{% if nohud %} tavle-nohud{% endif %}{% if readonly %} tavle-view-only{% endif %}" data-embed="{{ '1' if embed else '0' }}" data-view-only="{{ '1' if readonly else '0' }}"{% endblock %}
 
 {% block body %}
     <!-- Main Whiteboard Component -->
@@ -581,7 +585,7 @@
                 },
 
                 // UI State (loaded from preferences)
-                readonly: {{ 'true' if readonly else 'false' }},
+                viewOnly: {{ 'true' if readonly else 'false' }},
                 mode: 'draw',
                 color: prefs.color,
                 strokeWidth: prefs.strokeWidth,
@@ -658,16 +662,27 @@
                     });
                 },
 
+                _queryFlag(params, name) {
+                    const v = (params.get(name) || '').trim().toLowerCase();
+                    return v === '1' || v === 'true' || v === 'yes';
+                },
+
                 async init() {
                     // Set document title based on language
                     document.title = this.t('appName');
 
-                    if (this.readonly) {
+                    const params = new URLSearchParams(window.location.search);
+                    if (this._queryFlag(params, 'readonly')) {
+                        this.viewOnly = true;
+                        document.documentElement.classList.add('tavle-view-only');
+                    }
+
+                    if (this.viewOnly) {
                         this.mode = 'pan';
                     }
 
                     // ``?name=`` from embed hosts (e.g. Studito student workspace)
-                    const urlName = new URLSearchParams(window.location.search).get('name');
+                    const urlName = params.get('name');
                     if (urlName) {
                         const fromUrl = this.sanitizeUserName(urlName);
                         if (fromUrl) {
@@ -726,10 +741,10 @@
                         {
                             color: this.color,
                             strokeWidth: this.strokeWidth,
-                            readonly: this.readonly,
+                            viewOnly: this.viewOnly,
                         }
                     );
-                    if (this.readonly) {
+                    if (this.viewOnly) {
                         this.mode = 'pan';
                     }
 
@@ -740,7 +755,8 @@
 
                     // Initialize SyncManager with user info
                     this.syncManager = new SyncManager(this.whiteboard, this.tokenId, {
-                        userName: this.userName
+                        userName: this.userName,
+                        viewOnly: this.viewOnly,
                     });
 
                     // Listen for connection state changes
@@ -787,6 +803,7 @@
 
                     // Keyboard shortcuts
                     document.addEventListener('keydown', (e) => {
+                        if (this.viewOnly) return;
                         if (e.target.tagName === 'INPUT') return;
                         if (e.key === 'd' || e.key === 'D') this.setMode('draw');
                         if (e.key === 'e' || e.key === 'E') this.setMode('erase');
@@ -797,6 +814,9 @@
                 },
 
                 setMode(mode) {
+                    if (this.viewOnly) {
+                        return;
+                    }
                     this.mode = mode;
                     this.whiteboard.setMode(mode);
                 },

@@ -13,6 +13,7 @@ class SyncManager {
         // User identity
         this.userId = options.userId || this._generateUserId();
         this.userName = options.userName || 'Anonymous';
+        this.viewOnly = options.viewOnly === true || options.readonly === true;
 
         // Throttling for stroke points
         this.throttleInterval = options.throttleInterval || 16;  // ~60fps
@@ -200,6 +201,9 @@ class SyncManager {
     // =========================================================================
 
     _bindWhiteboardCallbacks() {
+        if (this.viewOnly) {
+            return;
+        }
         // Stroke point (throttled)
         this.whiteboard.onStrokePoint = (data) => {
             this._emitThrottled('stroke-point', {

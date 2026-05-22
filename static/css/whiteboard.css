@@ -568,8 +568,12 @@ body.tavle-nohud #tavle-user-panel-wrap {
 }
 
 /* Read-only watch (?readonly=1): still receive socket updates */
-body.tavle-readonly .whiteboard-canvas--active,
-body.tavle-readonly .whiteboard-canvas--base {
+body.tavle-view-only .whiteboard-container,
+body.tavle-view-only #tavle-root,
+html.tavle-view-only .whiteboard-canvas--active,
+html.tavle-view-only .whiteboard-canvas--base,
+body.tavle-view-only .whiteboard-canvas--active,
+body.tavle-view-only .whiteboard-canvas--base {
     pointer-events: none;
     cursor: default;
 }

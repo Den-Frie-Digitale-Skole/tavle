@@ -40,7 +40,7 @@ class Whiteboard {
         this.maxZoom = 5;
 
         // Watch-only embed (?readonly=1): receive remote updates, no local edits
-        this.readonly = options.readonly === true;
+        this.viewOnly = options.viewOnly === true || options.readonly === true;
 
         // Interaction mode
         this.mode = 'draw';  // 'draw' | 'select' | 'pan' | 'erase'
@@ -149,7 +149,7 @@ class Whiteboard {
     }
 
     _onPaste(e) {
-        if (this.readonly) {
+        if (this.viewOnly) {
             return;
         }
         const items = e.clipboardData?.items;
@@ -232,7 +232,7 @@ class Whiteboard {
     }
 
     _onPointerDown(e) {
-        if (this.readonly) {
+        if (this.viewOnly) {
             return;
         }
         e.preventDefault();
@@ -389,7 +389,7 @@ class Whiteboard {
     }
 
     _onPointerMove(e) {
-        if (this.readonly) {
+        if (this.viewOnly) {
             return;
         }
         e.preventDefault();
@@ -580,6 +580,9 @@ class Whiteboard {
     }
 
     _onPointerUp(e) {
+        if (this.viewOnly) {
+            return;
+        }
         if (this.isPanning) {
             this.isPanning = false;
             this._updateCursor();
@@ -764,7 +767,7 @@ class Whiteboard {
     }
 
     _onWheel(e) {
-        if (this.readonly) {
+        if (this.viewOnly) {
             return;
         }
         e.preventDefault();
@@ -799,7 +802,7 @@ class Whiteboard {
     }
 
     _onKeyDown(e) {
-        if (this.readonly) {
+        if (this.viewOnly) {
             return;
         }
         // Space for pan mode
@@ -1736,6 +1739,9 @@ class Whiteboard {
     // =========================================================================
 
     setMode(mode) {
+        if (this.viewOnly) {
+            return;
+        }
         this._previousMode = this.mode;
         this.mode = mode;
         if (mode !== 'select') {
