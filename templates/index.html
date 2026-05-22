@@ -645,13 +645,22 @@
                     // Set document title based on language
                     document.title = this.t('appName');
 
-                    // Load and sanitize stored user name
-                    const storedName = localStorage.getItem('whiteboardUserName');
-                    if (storedName) {
-                        this.userName = this.sanitizeUserName(storedName);
-                        // Update storage if sanitization changed the name
-                        if (this.userName !== storedName) {
-                            localStorage.setItem('whiteboardUserName', this.userName);
+                    // ``?name=`` from embed hosts (e.g. Studito student workspace)
+                    const urlName = new URLSearchParams(window.location.search).get('name');
+                    if (urlName) {
+                        const fromUrl = this.sanitizeUserName(urlName);
+                        if (fromUrl) {
+                            this.userName = fromUrl;
+                            localStorage.setItem('whiteboardUserName', fromUrl);
+                        }
+                    }
+                    if (!this.userName) {
+                        const storedName = localStorage.getItem('whiteboardUserName');
+                        if (storedName) {
+                            this.userName = this.sanitizeUserName(storedName);
+                            if (this.userName !== storedName) {
+                                localStorage.setItem('whiteboardUserName', this.userName);
+                            }
                         }
                     }
 

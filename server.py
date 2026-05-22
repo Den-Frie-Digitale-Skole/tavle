@@ -409,9 +409,11 @@ def api_docs():
 def board(token):
     """Render whiteboard for a specific document using access token.
 
-    Supports an ``embed=1`` query param for iframe hosts: adjusts
-    toolbar placement for a framed viewport; connection status and user panel
-    remain visible.
+    Supports query params for iframe hosts:
+
+    * ``embed=1`` — adjusts toolbar placement for a framed viewport
+    * ``name=<display name>`` — skip the name picker and join as that user
+      (e.g. Studito passes the logged-in student's username)
     """
     doc = get_document_by_token(token)
     if not doc:
