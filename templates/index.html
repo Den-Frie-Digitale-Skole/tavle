@@ -746,6 +746,7 @@
                     );
                     if (this.viewOnly) {
                         this.mode = 'pan';
+                        this.whiteboard._updateCursor();
                     }
 
                     // Apply additional saved preferences
@@ -803,7 +804,13 @@
 
                     // Keyboard shortcuts
                     document.addEventListener('keydown', (e) => {
-                        if (this.viewOnly) return;
+                        if (this.viewOnly) {
+                            if (e.target.tagName === 'INPUT') return;
+                            if (e.code === 'Space') {
+                                e.preventDefault();
+                            }
+                            return;
+                        }
                         if (e.target.tagName === 'INPUT') return;
                         if (e.key === 'd' || e.key === 'D') this.setMode('draw');
                         if (e.key === 'e' || e.key === 'E') this.setMode('erase');

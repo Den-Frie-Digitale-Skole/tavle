@@ -233,6 +233,10 @@ class Whiteboard {
 
     _onPointerDown(e) {
         if (this.viewOnly) {
+            e.preventDefault();
+            this.isPanning = true;
+            this.lastPointer = { x: e.clientX, y: e.clientY };
+            this.activeCanvas.style.cursor = 'grabbing';
             return;
         }
         e.preventDefault();
@@ -390,6 +394,18 @@ class Whiteboard {
 
     _onPointerMove(e) {
         if (this.viewOnly) {
+            if (!this.isPanning) {
+                return;
+            }
+            e.preventDefault();
+            const clientPoint = { x: e.clientX, y: e.clientY };
+            const dx = clientPoint.x - this.lastPointer.x;
+            const dy = clientPoint.y - this.lastPointer.y;
+            this.pan.x += dx;
+            this.pan.y += dy;
+            this.lastPointer = clientPoint;
+            this._redrawBase();
+            this._redrawActive();
             return;
         }
         e.preventDefault();
@@ -581,6 +597,10 @@ class Whiteboard {
 
     _onPointerUp(e) {
         if (this.viewOnly) {
+            if (this.isPanning) {
+                this.isPanning = false;
+                this.activeCanvas.style.cursor = 'grab';
+            }
             return;
         }
         if (this.isPanning) {
@@ -767,10 +787,33 @@ class Whiteboard {
     }
 
     _onWheel(e) {
+        e.preventDefault();
         if (this.viewOnly) {
+            if (this.isDrawing) {
+                return;
+            }
+            if (e.metaKey || e.ctrlKey) {
+                const delta = -e.deltaY * 0.001;
+                const newZoom = Math.min(
+                    this.maxZoom,
+                    Math.max(this.minZoom, this.zoom * (1 + delta)),
+                );
+                if (newZoom !== this.zoom) {
+                    const zoomRatio = newZoom / this.zoom;
+                    this.pan.x = e.clientX - (e.clientX - this.pan.x) * zoomRatio;
+                    this.pan.y = e.clientY - (e.clientY - this.pan.y) * zoomRatio;
+                    this.zoom = newZoom;
+                    this._redrawBase();
+                    this._redrawActive();
+                }
+            } else {
+                this.pan.x -= e.deltaX;
+                this.pan.y -= e.deltaY;
+                this._redrawBase();
+                this._redrawActive();
+            }
             return;
         }
-        e.preventDefault();
 
         // Don't process while actively drawing - it causes canvas redraw
         if (this.isDrawing) return;
@@ -803,6 +846,23 @@ class Whiteboard {
 
     _onKeyDown(e) {
         if (this.viewOnly) {
+            if (e.code === 'Space' && !this.isDrawing) {
+                e.preventDefault();
+                this.mode = 'pan';
+                this._updateCursor();
+            }
+            if (e.ctrlKey || e.metaKey) {
+                if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+                    e.preventDefault();
+                    this.zoomIn();
+                } else if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+                    e.preventDefault();
+                    this.zoomOut();
+                } else if (e.code === 'Digit0') {
+                    e.preventDefault();
+                    this.resetZoom();
+                }
+            }
             return;
         }
         // Space for pan mode
@@ -852,6 +912,12 @@ class Whiteboard {
 
     _onKeyUp(e) {
         if (e.code === 'Space') {
+            if (this.viewOnly) {
+                this.mode = 'pan';
+                this.isPanning = false;
+                this._updateCursor();
+                return;
+            }
             this.mode = this._previousMode || 'draw';
             this._updateCursor();
         }
@@ -1773,6 +1839,10 @@ class Whiteboard {
     }
 
     _updateCursor() {
+        if (this.viewOnly) {
+            this.activeCanvas.style.cursor = this.isPanning ? 'grabbing' : 'grab';
+            return;
+        }
         switch (this.mode) {
             case 'draw':
                 this.activeCanvas.style.cursor = 'crosshair';
