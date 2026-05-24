@@ -187,6 +187,11 @@ const translations = {
             goBack: 'Go Back',
             refresh: 'Refresh Page',
             tryAgain: 'Try Again',
+
+            // Image upload
+            imageTooLarge: 'Image is too large. Try a smaller file.',
+            imageUploadFailed: 'Could not add image. Please try again.',
+            imageBoardFull: 'Board image limit reached. Remove an image first.',
         },
     },
     
@@ -373,6 +378,11 @@ const translations = {
             goBack: 'Gå Tilbage',
             refresh: 'Genindlæs Side',
             tryAgain: 'Prøv Igen',
+
+            // Image upload
+            imageTooLarge: 'Billedet er for stort. Prøv en mindre fil.',
+            imageUploadFailed: 'Kunne ikke tilføje billede. Prøv igen.',
+            imageBoardFull: 'Billedgrænsen er nået. Fjern et billede først.',
         },
     },
 };

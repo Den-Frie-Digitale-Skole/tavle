@@ -510,6 +510,15 @@ def register_socketio_handlers(socketio):
         Broadcast image addition and persist to database.
         data: { imageId, data, x, y, width, height, transform }
         """
+        image_id = data.get('imageId') if isinstance(data, dict) else None
+
+        def emit_image_add_error(message):
+            emit('error', {
+                'code': 'IMAGE_ADD_FAILED',
+                'imageId': image_id,
+                'message': message
+            })
+
         if not rate_limit_check('image-add'):
             return
         
@@ -517,7 +526,7 @@ def register_socketio_handlers(socketio):
         is_valid, validated, error = validate_image_add_event(data)
         if not is_valid:
             security_logger.warning(f'Invalid image-add from {request.sid}: {error}')
-            emit('error', {'message': f'Invalid image data: {error}'})
+            emit_image_add_error(f'Invalid image data: {error}')
             return
         
         # Use server-side session
@@ -527,13 +536,15 @@ def register_socketio_handlers(socketio):
         
         doc, _ = get_doc_from_token(token)
         if not doc:
-            emit('error', {'message': 'Session expired'})
+            emit_image_add_error('Session expired')
             return
         
+        image_id = validated['imageId']
+
         # Check board limits
         image_count = Image.select().where(Image.document_id == doc_id).count()
         if image_count >= MAX_IMAGES_PER_BOARD:
-            emit('error', {'message': f'Board image limit reached ({MAX_IMAGES_PER_BOARD})'})
+            emit_image_add_error(f'Board image limit reached ({MAX_IMAGES_PER_BOARD})')
             return
         
         # Persist image to database with validated data
@@ -553,7 +564,7 @@ def register_socketio_handlers(socketio):
             doc.bump_version()
         except Exception as e:
             logger.error(f'Error saving image: {e}')
-            emit('error', {'message': 'Failed to save image'})
+            emit_image_add_error('Failed to save image')
             return
         
         # Broadcast validated data to others

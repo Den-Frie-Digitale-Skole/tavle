@@ -18,6 +18,7 @@ from api import api_bp
 from socketio_handlers import register_socketio_handlers
 from setup import needs_setup, complete_setup, get_admin_token, get_secret_key, get_or_create_admin_token, mark_setup_complete
 from docs import docs_bp
+from validators import MAX_IMAGE_DATA_SIZE
 
 # =============================================================================
 # Logging Setup
@@ -184,7 +185,8 @@ socketio = SocketIO(
     cors_allowed_origins=ALLOWED_ORIGINS,
     async_mode='eventlet',
     ping_timeout=60,
-    ping_interval=25
+    ping_interval=25,
+    max_http_buffer_size=MAX_IMAGE_DATA_SIZE
 )
 
 # Register all SocketIO event handlers

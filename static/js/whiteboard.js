@@ -71,7 +71,12 @@ class Whiteboard {
         this.onImageAdd = null;
         this.onImageUpdate = null;
         this.onImageDelete = null;
+        this.onImageError = null;  // (errorKey: string) => void
         this.onCursorMove = null;  // Cursor position broadcast
+
+        // Image upload limits (display scale + max base64 payload for sync)
+        this.maxImageDisplaySize = 400;
+        this.maxImagePayloadBytes = Math.floor(1.5 * 1024 * 1024);
 
         // Remote users and cursors
         this.remoteUsers = new Map();  // oduserId -> { name, color, cursor: {x, y}, lastSeen }
@@ -167,64 +172,146 @@ class Whiteboard {
 
     _handleImageFile(file, x = null, y = null) {
         const reader = new FileReader();
+        reader.onerror = () => {
+            if (this.onImageError) {
+                this.onImageError('imageUploadFailed');
+            }
+        };
         reader.onload = (event) => {
             const dataUrl = event.target.result;
-            
-            // Create a temporary image to get dimensions
+
             const img = new window.Image();
+            img.onerror = () => {
+                if (this.onImageError) {
+                    this.onImageError('imageUploadFailed');
+                }
+            };
             img.onload = () => {
-                // Calculate position (center of viewport if not specified)
-                const canvasRect = this.activeCanvas.getBoundingClientRect();
-                const centerX = x !== null ? x : (canvasRect.width / 2 - this.pan.x) / this.zoom;
-                const centerY = y !== null ? y : (canvasRect.height / 2 - this.pan.y) / this.zoom;
-                
-                // Scale image to reasonable size (max 400px)
                 let width = img.width;
                 let height = img.height;
-                const maxSize = 400;
-                
+                const maxSize = this.maxImageDisplaySize;
+
                 if (width > maxSize || height > maxSize) {
                     const ratio = Math.min(maxSize / width, maxSize / height);
                     width *= ratio;
                     height *= ratio;
                 }
-                
-                const imageId = this._generateId('image');
-                const imageData = {
-                    id: imageId,
-                    data: dataUrl,
-                    x: centerX - width / 2,
-                    y: centerY - height / 2,
-                    width: width,
-                    height: height,
-                    transform: { x: 0, y: 0, scale: 1 },
-                    zIndex: this.nextZIndex++
-                };
-                
-                // Add to images map
-                this.images.set(imageId, imageData);
-                
-                // Cache the loaded image
-                this.imageCache.set(imageId, img);
 
-                // Add to history
-                this._addToHistory({
-                    type: 'image-add',
-                    imageId: imageId,
-                    image: { ...imageData }
-                });
-                
-                // Redraw
-                this._redrawBase();
-                
-                // Emit event
-                if (this.onImageAdd) {
-                    this.onImageAdd(imageData);
-                }
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, Math.round(width));
+                canvas.height = Math.max(1, Math.round(height));
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                const preserveAlpha = file.type === 'image/png'
+                    || file.type === 'image/gif'
+                    || file.type === 'image/webp';
+                const mimeType = preserveAlpha ? 'image/png' : 'image/jpeg';
+                const quality = preserveAlpha ? undefined : 0.85;
+
+                canvas.toBlob((blob) => {
+                    if (!blob) {
+                        if (this.onImageError) {
+                            this.onImageError('imageUploadFailed');
+                        }
+                        return;
+                    }
+
+                    const blobReader = new FileReader();
+                    blobReader.onerror = () => {
+                        if (this.onImageError) {
+                            this.onImageError('imageUploadFailed');
+                        }
+                    };
+                    blobReader.onload = () => {
+                        const encodedDataUrl = blobReader.result;
+                        if (encodedDataUrl.length > this.maxImagePayloadBytes) {
+                            if (this.onImageError) {
+                                this.onImageError('imageTooLarge');
+                            }
+                            return;
+                        }
+
+                        this._addImageFromEncoded(encodedDataUrl, width, height, x, y);
+                    };
+                    blobReader.readAsDataURL(blob);
+                }, mimeType, quality);
             };
             img.src = dataUrl;
         };
         reader.readAsDataURL(file);
+    }
+
+    _addImageFromEncoded(encodedDataUrl, width, height, x = null, y = null) {
+        const canvasRect = this.activeCanvas.getBoundingClientRect();
+        const centerX = x !== null ? x : (canvasRect.width / 2 - this.pan.x) / this.zoom;
+        const centerY = y !== null ? y : (canvasRect.height / 2 - this.pan.y) / this.zoom;
+
+        const imageId = this._generateId('image');
+        const imageData = {
+            id: imageId,
+            data: encodedDataUrl,
+            x: centerX - width / 2,
+            y: centerY - height / 2,
+            width: width,
+            height: height,
+            transform: { x: 0, y: 0, scale: 1 },
+            zIndex: this.nextZIndex++
+        };
+
+        this.images.set(imageId, imageData);
+
+        const cachedImg = new window.Image();
+        cachedImg.onload = () => {
+            this.imageCache.set(imageId, cachedImg);
+            this._redrawBase();
+        };
+        cachedImg.onerror = () => {
+            this.removeImageLocal(imageId);
+            if (this.onImageError) {
+                this.onImageError('imageUploadFailed');
+            }
+        };
+        cachedImg.src = encodedDataUrl;
+
+        this._addToHistory({
+            type: 'image-add',
+            imageId: imageId,
+            image: { ...imageData }
+        });
+
+        this._redrawBase();
+
+        if (this.onImageAdd) {
+            this.onImageAdd(imageData);
+        }
+    }
+
+    removeImageLocal(imageId) {
+        if (!this.images.has(imageId)) {
+            return;
+        }
+
+        this.images.delete(imageId);
+        this.imageCache.delete(imageId);
+        this.selectedImages.delete(imageId);
+        this._removeHistoryEntryForImage(imageId);
+        this._redrawBase();
+        this._redrawActive();
+    }
+
+    _removeHistoryEntryForImage(imageId) {
+        const idx = this.history.findIndex(
+            (action) => action.type === 'image-add' && action.imageId === imageId
+        );
+        if (idx === -1) {
+            return;
+        }
+
+        if (idx <= this.historyIndex) {
+            this.historyIndex--;
+        }
+        this.history.splice(idx, 1);
     }
 
     addImageFromFile(file) {

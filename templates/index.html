@@ -368,6 +368,12 @@
             </div>
         </div>
 
+        <!-- Error toast -->
+        <div id="tavle-toast" x-cloak x-show="toastVisible" x-transition
+            class="fixed bottom-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-white text-sm text-red-600 font-medium max-w-md text-center"
+            style="border: 2px solid #1e1e1e;"
+            x-text="toastMessage"></div>
+
         <!-- User Panel (bottom right) - Swiss + Whiteboard Style -->
         <div id="tavle-user-panel-wrap" class="fixed bottom-4 right-4 z-50" x-cloak x-show="userName">
             <!-- Connected users panel -->
@@ -592,6 +598,9 @@
                 zoom: 1,
                 connected: false,
                 rateLimited: false,
+                toastVisible: false,
+                toastMessage: '',
+                toastTimer: null,
                 loading: true,
                 showGrid: prefs.showGrid,
                 backgroundColor: prefs.backgroundColor,
@@ -660,6 +669,17 @@
                         showGrid: this.showGrid,
                         eraserWidth: this.eraserWidth
                     });
+                },
+
+                showToast(messageKey) {
+                    this.toastMessage = this.t(messageKey);
+                    this.toastVisible = true;
+                    if (this.toastTimer) {
+                        clearTimeout(this.toastTimer);
+                    }
+                    this.toastTimer = setTimeout(() => {
+                        this.toastVisible = false;
+                    }, 5000);
                 },
 
                 _queryFlag(params, name) {
@@ -768,6 +788,10 @@
                     // Listen for rate limit state changes
                     this.syncManager.onRateLimitChange((rateLimited) => {
                         this.rateLimited = rateLimited;
+                    });
+
+                    this.syncManager.onError((messageKey) => {
+                        this.showToast(messageKey);
                     });
 
                     // Get user color from whiteboard
@@ -890,6 +914,8 @@
                     const file = event.target.files[0];
                     if (file && file.type.startsWith('image/')) {
                         this.whiteboard.addImageFromFile(file);
+                    } else if (file) {
+                        this.showToast('errors.imageUploadFailed');
                     }
                     // Reset input so the same file can be selected again
                     event.target.value = '';

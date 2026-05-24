@@ -65,6 +65,14 @@ class SyncManager {
         this._rateLimitCallback = callback;
     }
 
+    /**
+     * Set a callback for user-visible error messages (i18n key or plain string)
+     * @param {Function} callback - Function to call with (messageKey: string)
+     */
+    onError(callback) {
+        this._errorCallback = callback;
+    }
+
     _notifyConnectionChange() {
         if (this._connectionCallback) {
             this._connectionCallback(this.connected);
@@ -74,6 +82,27 @@ class SyncManager {
     _notifyRateLimitChange() {
         if (this._rateLimitCallback) {
             this._rateLimitCallback(this.rateLimited);
+        }
+    }
+
+    _notifyError(messageKey) {
+        if (this._errorCallback) {
+            this._errorCallback(messageKey);
+        }
+    }
+
+    _handleImageAddFailure(error) {
+        if (error.imageId) {
+            this.whiteboard.removeImageLocal(error.imageId);
+        }
+
+        const message = error.message || '';
+        if (message.includes('Board image limit')) {
+            this._notifyError('errors.imageBoardFull');
+        } else if (message.includes('Invalid image data')) {
+            this._notifyError('errors.imageTooLarge');
+        } else {
+            this._notifyError('errors.imageUploadFailed');
         }
     }
 
@@ -157,6 +186,11 @@ class SyncManager {
                             this.lastRejoinTime = now;
                             this.joinRoom();
                         }
+                        return;
+                    }
+
+                    if (error.code === 'IMAGE_ADD_FAILED') {
+                        this._handleImageAddFailure(error);
                     }
                 });
 
@@ -248,6 +282,11 @@ class SyncManager {
 
         // Image add
         this.whiteboard.onImageAdd = (data) => {
+            if (!this.connected) {
+                this.whiteboard.removeImageLocal(data.id);
+                this._notifyError('errors.imageUploadFailed');
+                return;
+            }
             this._emit('image-add', {
                 tokenId: this.tokenId,
                 imageId: data.id,
@@ -259,6 +298,10 @@ class SyncManager {
                 transform: data.transform,
                 zIndex: data.zIndex
             });
+        };
+
+        this.whiteboard.onImageError = (messageKey) => {
+            this._notifyError(`errors.${messageKey}`);
         };
 
         // Image update (move/transform)

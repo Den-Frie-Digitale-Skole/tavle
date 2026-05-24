@@ -378,7 +378,7 @@ def validate_image_add_event(data: Dict) -> Tuple[bool, Dict, str]:
     
     image_data = validate_image_data(data.get('data'))
     if not image_data:
-        return False, {}, 'Invalid or missing image data (must be data URL, max 5MB)'
+        return False, {}, 'Invalid or missing image data (must be data URL, max 20MB)'
     
     # Validate zIndex (optional, defaults to 0)
     z_index = 0
