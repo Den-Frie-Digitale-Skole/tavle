@@ -75,8 +75,13 @@ class Whiteboard {
         this.onCursorMove = null;  // Cursor position broadcast
 
         // Image upload limits (display scale + max base64 payload for sync)
-        this.maxImageDisplaySize = 400;
+        this.maxImageDisplaySize = 2048;
         this.maxImagePayloadBytes = Math.floor(1.5 * 1024 * 1024);
+
+        // Canvas backing-store size (CSS pixels); bitmap is logical * devicePixelRatio
+        this._logicalWidth = 0;
+        this._logicalHeight = 0;
+        this._dpr = 1;
 
         // Remote users and cursors
         this.remoteUsers = new Map();  // oduserId -> { name, color, cursor: {x, y}, lastSeen }
@@ -149,8 +154,11 @@ class Whiteboard {
         // Paste event for images
         document.addEventListener('paste', this._onPaste.bind(this));
 
-        // Window resize
+        // Window resize (also catches many display/DPR changes when moving across monitors)
         window.addEventListener('resize', this.resize.bind(this));
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', this.resize.bind(this));
+        }
     }
 
     _onPaste(e) {
@@ -187,9 +195,15 @@ class Whiteboard {
                 }
             };
             img.onload = () => {
-                let width = img.width;
-                let height = img.height;
-                const maxSize = this.maxImageDisplaySize;
+                let width = img.naturalWidth || img.width;
+                let height = img.naturalHeight || img.height;
+                const dpr = window.devicePixelRatio || 1;
+                const maxSize = Math.min(4096, Math.round(this.maxImageDisplaySize * dpr));
+
+                if (width <= maxSize && height <= maxSize && dataUrl.length <= this.maxImagePayloadBytes) {
+                    this._addImageFromEncoded(dataUrl, width, height, x, y);
+                    return;
+                }
 
                 if (width > maxSize || height > maxSize) {
                     const ratio = Math.min(maxSize / width, maxSize / height);
@@ -201,13 +215,15 @@ class Whiteboard {
                 canvas.width = Math.max(1, Math.round(width));
                 canvas.height = Math.max(1, Math.round(height));
                 const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
                 const preserveAlpha = file.type === 'image/png'
                     || file.type === 'image/gif'
                     || file.type === 'image/webp';
                 const mimeType = preserveAlpha ? 'image/png' : 'image/jpeg';
-                const quality = preserveAlpha ? undefined : 0.85;
+                const quality = preserveAlpha ? undefined : 0.92;
 
                 canvas.toBlob((blob) => {
                     if (!blob) {
@@ -846,7 +862,7 @@ class Whiteboard {
             this._renderStrokeBase(this.currentStroke);
 
             // Clear active canvas
-            this.activeCtx.clearRect(0, 0, this.activeCanvas.width, this.activeCanvas.height);
+            this.activeCtx.clearRect(0, 0, this._logicalWidth, this._logicalHeight);
             this._redrawActive();
 
             // Emit stroke complete
@@ -1419,7 +1435,7 @@ class Whiteboard {
     }
 
     _renderStrokeActive(stroke) {
-        this.activeCtx.clearRect(0, 0, this.activeCanvas.width, this.activeCanvas.height);
+        this.activeCtx.clearRect(0, 0, this._logicalWidth, this._logicalHeight);
         this._renderStroke(stroke, this.activeCtx);
 
         // Redraw remote strokes
@@ -1437,11 +1453,11 @@ class Whiteboard {
     }
 
     _redrawBase() {
-        this.baseCtx.clearRect(0, 0, this.baseCanvas.width, this.baseCanvas.height);
+        this.baseCtx.clearRect(0, 0, this._logicalWidth, this._logicalHeight);
 
         // Draw background
         this.baseCtx.fillStyle = this.backgroundColor || '#ffffff';
-        this.baseCtx.fillRect(0, 0, this.baseCanvas.width, this.baseCanvas.height);
+        this.baseCtx.fillRect(0, 0, this._logicalWidth, this._logicalHeight);
 
         // Draw grid (optional visual aid)
         if (this.showGrid) {
@@ -1496,7 +1512,15 @@ class Whiteboard {
             return; // Don't draw until loaded
         }
         
-        // Draw the image
+        const naturalW = imgElement.naturalWidth || imgElement.width;
+        const naturalH = imgElement.naturalHeight || imgElement.height;
+        const upscaleX = screenWidth > naturalW;
+        const upscaleY = screenHeight > naturalH;
+        ctx.imageSmoothingEnabled = upscaleX || upscaleY;
+        if (ctx.imageSmoothingEnabled && ctx.imageSmoothingQuality !== undefined) {
+            ctx.imageSmoothingQuality = 'high';
+        }
+
         ctx.drawImage(imgElement, screenX, screenY, screenWidth, screenHeight);
         
         // Draw selection box and resize handles if selected
@@ -1529,7 +1553,7 @@ class Whiteboard {
     }
 
     _redrawActive() {
-        this.activeCtx.clearRect(0, 0, this.activeCanvas.width, this.activeCanvas.height);
+        this.activeCtx.clearRect(0, 0, this._logicalWidth, this._logicalHeight);
 
         // Draw remote strokes in progress
         this.remoteStrokes.forEach(remoteStroke => {
@@ -1581,8 +1605,8 @@ class Whiteboard {
             const screenY = user.cursor.y * this.zoom + this.pan.y;
             
             // Skip if cursor is off screen
-            if (screenX < -50 || screenX > this.activeCanvas.width + 50 ||
-                screenY < -50 || screenY > this.activeCanvas.height + 50) {
+            if (screenX < -50 || screenX > this._logicalWidth + 50 ||
+                screenY < -50 || screenY > this._logicalHeight + 50) {
                 return;
             }
             
@@ -1638,18 +1662,18 @@ class Whiteboard {
         this.baseCtx.lineWidth = 1;
 
         // Vertical lines
-        for (let x = offsetX; x < this.baseCanvas.width; x += gridSize) {
+        for (let x = offsetX; x < this._logicalWidth; x += gridSize) {
             this.baseCtx.beginPath();
             this.baseCtx.moveTo(x, 0);
-            this.baseCtx.lineTo(x, this.baseCanvas.height);
+            this.baseCtx.lineTo(x, this._logicalHeight);
             this.baseCtx.stroke();
         }
 
         // Horizontal lines
-        for (let y = offsetY; y < this.baseCanvas.height; y += gridSize) {
+        for (let y = offsetY; y < this._logicalHeight; y += gridSize) {
             this.baseCtx.beginPath();
             this.baseCtx.moveTo(0, y);
-            this.baseCtx.lineTo(this.baseCanvas.width, y);
+            this.baseCtx.lineTo(this._logicalWidth, y);
             this.baseCtx.stroke();
         }
     }
@@ -2378,19 +2402,31 @@ class Whiteboard {
 
         const container = this.baseCanvas.parentElement;
         const rect = container.getBoundingClientRect();
-        const width = Math.round(rect.width) || container.clientWidth || window.innerWidth;
-        const height = Math.round(rect.height) || container.clientHeight || window.innerHeight;
+        const logicalWidth = Math.round(rect.width) || container.clientWidth || window.innerWidth;
+        const logicalHeight = Math.round(rect.height) || container.clientHeight || window.innerHeight;
+        const dpr = window.devicePixelRatio || 1;
 
-        // Check if size actually changed
-        if (this.baseCanvas.width === width && this.baseCanvas.height === height) {
+        if (this._logicalWidth === logicalWidth &&
+            this._logicalHeight === logicalHeight &&
+            this._dpr === dpr) {
             return;
         }
 
-        // Update canvas sizes (this clears them)
-        this.baseCanvas.width = width;
-        this.baseCanvas.height = height;
-        this.activeCanvas.width = width;
-        this.activeCanvas.height = height;
+        this._logicalWidth = logicalWidth;
+        this._logicalHeight = logicalHeight;
+        this._dpr = dpr;
+
+        const bitmapWidth = Math.max(1, Math.round(logicalWidth * dpr));
+        const bitmapHeight = Math.max(1, Math.round(logicalHeight * dpr));
+
+        for (const canvas of [this.baseCanvas, this.activeCanvas]) {
+            canvas.width = bitmapWidth;
+            canvas.height = bitmapHeight;
+        }
+
+        for (const ctx of [this.baseCtx, this.activeCtx]) {
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
 
         // Redraw
         this._redrawBase();
@@ -2515,8 +2551,8 @@ class Whiteboard {
         if (!user || !user.cursor) return false;
         
         // Center the view on the user's cursor position
-        const centerX = this.activeCanvas.width / 2;
-        const centerY = this.activeCanvas.height / 2;
+        const centerX = this._logicalWidth / 2;
+        const centerY = this._logicalHeight / 2;
         
         this.pan.x = centerX - user.cursor.x * this.zoom;
         this.pan.y = centerY - user.cursor.y * this.zoom;
@@ -2575,8 +2611,8 @@ class Whiteboard {
         // If empty board, export current view
         if (!isFinite(minX)) {
             minX = 0; minY = 0;
-            maxX = this.baseCanvas.width / this.zoom;
-            maxY = this.baseCanvas.height / this.zoom;
+            maxX = this._logicalWidth / this.zoom;
+            maxY = this._logicalHeight / this.zoom;
         }
         
         // Add padding
@@ -2586,12 +2622,14 @@ class Whiteboard {
         
         const width = Math.ceil(maxX - minX);
         const height = Math.ceil(maxY - minY);
+        const exportDpr = window.devicePixelRatio || 1;
         
         // Create offscreen canvas
         const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = Math.max(1, Math.ceil(width * exportDpr));
+        canvas.height = Math.max(1, Math.ceil(height * exportDpr));
         const ctx = canvas.getContext('2d');
+        ctx.setTransform(exportDpr, 0, 0, exportDpr, 0, 0);
         
         // Draw background
         ctx.fillStyle = this.backgroundColor || '#ffffff';
