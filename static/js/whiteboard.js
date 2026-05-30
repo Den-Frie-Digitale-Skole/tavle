@@ -76,7 +76,7 @@ class Whiteboard {
 
         // Image upload limits (display scale + max base64 payload for sync)
         this.maxImageDisplaySize = 2048;
-        this.maxImagePayloadBytes = Math.floor(1.5 * 1024 * 1024);
+        this.maxImagePayloadBytes = Math.floor(3 * 1024 * 1024);
 
         // Canvas backing-store size (CSS pixels); bitmap is logical * devicePixelRatio
         this._logicalWidth = 0;
@@ -178,6 +178,140 @@ class Whiteboard {
         }
     }
 
+    _mimeFromDataUrl(dataUrl) {
+        const match = /^data:([^;,]+)/i.exec(dataUrl || '');
+        return match ? match[1].toLowerCase() : '';
+    }
+
+    _prefersLosslessOutput(mime, file) {
+        const type = (mime || file?.type || '').toLowerCase();
+        return type === 'image/png'
+            || type === 'image/gif'
+            || type === 'image/webp'
+            || type === 'image/svg+xml';
+    }
+
+    _fitImageDimensionsToViewport(width, height) {
+        const viewW = this._logicalWidth || this.activeCanvas.getBoundingClientRect().width || 0;
+        const viewH = this._logicalHeight || this.activeCanvas.getBoundingClientRect().height || 0;
+        if (viewW < 1 || viewH < 1) {
+            return { width, height };
+        }
+
+        const maxW = (viewW * 0.92) / this.zoom;
+        const maxH = (viewH * 0.92) / this.zoom;
+        const scale = Math.min(1, maxW / width, maxH / height);
+        return {
+            width: Math.max(1, Math.round(width * scale)),
+            height: Math.max(1, Math.round(height * scale)),
+        };
+    }
+
+    _canvasToDataUrl(canvas, mimeType, quality) {
+        return new Promise((resolve, reject) => {
+            canvas.toBlob((blob) => {
+                if (!blob) {
+                    reject(new Error('canvas encode failed'));
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onerror = () => reject(new Error('read failed'));
+                reader.onload = () => resolve(reader.result);
+                reader.readAsDataURL(blob);
+            }, mimeType, quality);
+        });
+    }
+
+    _encodeImageOnCanvas(img, targetWidth, targetHeight, mimeType, quality) {
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(targetWidth));
+        canvas.height = Math.max(1, Math.round(targetHeight));
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        if (ctx.imageSmoothingQuality !== undefined) {
+            ctx.imageSmoothingQuality = 'high';
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        return this._canvasToDataUrl(canvas, mimeType, quality);
+    }
+
+    _drawImageSharp(ctx, imgElement, screenX, screenY, screenWidth, screenHeight) {
+        const naturalW = imgElement.naturalWidth || imgElement.width;
+        const naturalH = imgElement.naturalHeight || imgElement.height;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(
+            imgElement,
+            0, 0, naturalW, naturalH,
+            screenX, screenY, screenWidth, screenHeight
+        );
+    }
+
+    async _prepareAndAddImage({ file, dataUrl, img, x, y }) {
+        const sourceWidth = img.naturalWidth || img.width;
+        const sourceHeight = img.naturalHeight || img.height;
+        const mime = this._mimeFromDataUrl(dataUrl) || (file?.type || '');
+        const lossless = this._prefersLosslessOutput(mime, file);
+        const outputMime = lossless ? 'image/png' : 'image/jpeg';
+        const dpr = window.devicePixelRatio || 1;
+        const maxDimension = Math.min(4096, Math.round(this.maxImageDisplaySize * dpr));
+
+        const fit = this._fitImageDimensionsToViewport(sourceWidth, sourceHeight);
+        let targetWidth = fit.width;
+        let targetHeight = fit.height;
+
+        if (sourceWidth > maxDimension || sourceHeight > maxDimension) {
+            const ratio = Math.min(maxDimension / sourceWidth, maxDimension / sourceHeight);
+            targetWidth = Math.max(1, Math.round(sourceWidth * ratio));
+            targetHeight = Math.max(1, Math.round(sourceHeight * ratio));
+        }
+
+        const needsResize = targetWidth !== sourceWidth || targetHeight !== sourceHeight;
+        const needsReencode = needsResize || dataUrl.length > this.maxImagePayloadBytes;
+
+        if (!needsReencode) {
+            this._addImageFromEncoded(dataUrl, sourceWidth, sourceHeight, x, y);
+            return;
+        }
+
+        let jpegQuality = 0.95;
+        let encodedDataUrl = await this._encodeImageOnCanvas(
+            img,
+            targetWidth,
+            targetHeight,
+            outputMime,
+            lossless ? undefined : jpegQuality
+        );
+
+        while (encodedDataUrl.length > this.maxImagePayloadBytes) {
+            if (lossless) {
+                targetWidth = Math.max(32, Math.round(targetWidth * 0.85));
+                targetHeight = Math.max(32, Math.round(targetHeight * 0.85));
+            } else if (jpegQuality > 0.7) {
+                jpegQuality -= 0.05;
+            } else {
+                targetWidth = Math.max(32, Math.round(targetWidth * 0.85));
+                targetHeight = Math.max(32, Math.round(targetHeight * 0.85));
+            }
+
+            if (targetWidth < 32 || targetHeight < 32) {
+                if (this.onImageError) {
+                    this.onImageError('imageTooLarge');
+                }
+                return;
+            }
+
+            encodedDataUrl = await this._encodeImageOnCanvas(
+                img,
+                targetWidth,
+                targetHeight,
+                outputMime,
+                lossless ? undefined : jpegQuality
+            );
+        }
+
+        this._addImageFromEncoded(encodedDataUrl, targetWidth, targetHeight, x, y);
+    }
+
     _handleImageFile(file, x = null, y = null) {
         const reader = new FileReader();
         reader.onerror = () => {
@@ -195,63 +329,11 @@ class Whiteboard {
                 }
             };
             img.onload = () => {
-                let width = img.naturalWidth || img.width;
-                let height = img.naturalHeight || img.height;
-                const dpr = window.devicePixelRatio || 1;
-                const maxSize = Math.min(4096, Math.round(this.maxImageDisplaySize * dpr));
-
-                if (width <= maxSize && height <= maxSize && dataUrl.length <= this.maxImagePayloadBytes) {
-                    this._addImageFromEncoded(dataUrl, width, height, x, y);
-                    return;
-                }
-
-                if (width > maxSize || height > maxSize) {
-                    const ratio = Math.min(maxSize / width, maxSize / height);
-                    width *= ratio;
-                    height *= ratio;
-                }
-
-                const canvas = document.createElement('canvas');
-                canvas.width = Math.max(1, Math.round(width));
-                canvas.height = Math.max(1, Math.round(height));
-                const ctx = canvas.getContext('2d');
-                ctx.imageSmoothingEnabled = true;
-                ctx.imageSmoothingQuality = 'high';
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                const preserveAlpha = file.type === 'image/png'
-                    || file.type === 'image/gif'
-                    || file.type === 'image/webp';
-                const mimeType = preserveAlpha ? 'image/png' : 'image/jpeg';
-                const quality = preserveAlpha ? undefined : 0.92;
-
-                canvas.toBlob((blob) => {
-                    if (!blob) {
-                        if (this.onImageError) {
-                            this.onImageError('imageUploadFailed');
-                        }
-                        return;
+                this._prepareAndAddImage({ file, dataUrl, img, x, y }).catch(() => {
+                    if (this.onImageError) {
+                        this.onImageError('imageUploadFailed');
                     }
-
-                    const blobReader = new FileReader();
-                    blobReader.onerror = () => {
-                        if (this.onImageError) {
-                            this.onImageError('imageUploadFailed');
-                        }
-                    };
-                    blobReader.onload = () => {
-                        const encodedDataUrl = blobReader.result;
-                        if (encodedDataUrl.length > this.maxImagePayloadBytes) {
-                            if (this.onImageError) {
-                                this.onImageError('imageTooLarge');
-                            }
-                            return;
-                        }
-
-                        this._addImageFromEncoded(encodedDataUrl, width, height, x, y);
-                    };
-                    blobReader.readAsDataURL(blob);
-                }, mimeType, quality);
+                });
             };
             img.src = dataUrl;
         };
@@ -1512,16 +1594,7 @@ class Whiteboard {
             return; // Don't draw until loaded
         }
         
-        const naturalW = imgElement.naturalWidth || imgElement.width;
-        const naturalH = imgElement.naturalHeight || imgElement.height;
-        const upscaleX = screenWidth > naturalW;
-        const upscaleY = screenHeight > naturalH;
-        ctx.imageSmoothingEnabled = upscaleX || upscaleY;
-        if (ctx.imageSmoothingEnabled && ctx.imageSmoothingQuality !== undefined) {
-            ctx.imageSmoothingQuality = 'high';
-        }
-
-        ctx.drawImage(imgElement, screenX, screenY, screenWidth, screenHeight);
+        this._drawImageSharp(ctx, imgElement, screenX, screenY, screenWidth, screenHeight);
         
         // Draw selection box and resize handles if selected
         if (options.selected) {
@@ -2677,7 +2750,7 @@ class Whiteboard {
                     const y = (el.data.y + transform.y) + this.pan.y;
                     const w = el.data.width * (transform.scale || 1);
                     const h = el.data.height * (transform.scale || 1);
-                    ctx.drawImage(img, x, y, w, h);
+                    this._drawImageSharp(ctx, img, x, y, w, h);
                 }
             }
         });
